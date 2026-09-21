@@ -376,9 +376,17 @@ if (userCount === 0) {
   }
 }
 
-// Cleanup expired sessions hourly (section 12)
+// Cleanup expired sessions hourly (section 12).
+// expires_at is stored as an ISO 8601 string (new Date().toISOString(), with
+// a "T" separator and milliseconds); datetime('now') returns SQLite's own
+// "YYYY-MM-DD HH:MM:SS" format. A bare string comparison of those two
+// formats is wrong: char 11 is "T" (0x54) in the stored value vs a space
+// (0x20) from SQLite, so any stored value with a matching date sorts as
+// greater regardless of the actual time, meaning an expired session was
+// still accepted and never reaped. datetime(expires_at) normalizes the
+// stored ISO string into the same format before comparing.
 function cleanupSessions() {
-  const n = db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run().changes;
+  const n = db.prepare("DELETE FROM sessions WHERE datetime(expires_at) < datetime('now')").run().changes;
   if (n) console.log('[OfficePM] cleaned up ' + n + ' expired session(s)');
 }
 cleanupSessions();
@@ -420,7 +428,10 @@ function requireAuth(req, res, next) {
   const row = db.prepare(
     "SELECT sessions.user_id AS user_id, users.email AS email, users.name AS name, users.is_admin AS is_admin " +
     "FROM sessions JOIN users ON users.id = sessions.user_id " +
-    "WHERE sessions.id = ? AND sessions.expires_at > datetime('now')"
+    // Same normalization as cleanupSessions() above: datetime(expires_at),
+    // not a bare string comparison against datetime('now'), see the comment
+    // there for why the bare comparison silently accepted expired sessions.
+    "WHERE sessions.id = ? AND datetime(sessions.expires_at) > datetime('now')"
   ).get(sid);
   if (!row) return res.status(401).json({ error: 'session expired' });
   req.user = { id: row.user_id, email: row.email, name: row.name, isAdmin: !!row.is_admin };
@@ -1270,6 +1281,11 @@ app.patch('/api/users/:id/password', requireAuth, requireAdmin, (req, res) => {
   const hash = bcrypt.hashSync(b.password, 10);
   const info = db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, req.params.id);
   if (!info.changes) return res.status(404).json({ error: 'user not found' });
+  // This route is the one an admin uses after a suspected compromise, so a
+  // reset that leaves the old sessions alone would let a stolen cookie
+  // survive the exact response meant to kill it. Log the user out
+  // everywhere, not just invalidate the password.
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 
