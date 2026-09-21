@@ -18,7 +18,10 @@ const PORT = process.env.PORT || 3000;
 const PM_TOKEN = process.env.PM_TOKEN || '';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@officepm.local';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
+// Section 12: no secrets in source. No hardcoded default password - if the operator
+// doesn't set ADMIN_PASSWORD, generate a random one at first boot and print it once.
+const ADMIN_PASSWORD_GENERATED = !process.env.ADMIN_PASSWORD;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || crypto.randomBytes(12).toString('base64url');
 
 const BLOCKED_EXTENSIONS = new Set(['.exe', '.sh', '.bat', '.cmd', '.js', '.html', '.htm']);
 const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25MB
@@ -364,8 +367,13 @@ if (userCount === 0) {
   const hash = bcrypt.hashSync(ADMIN_PASSWORD, 10);
   db.prepare('INSERT INTO users (email, name, password, is_admin) VALUES (?, ?, ?, 1)')
     .run(ADMIN_EMAIL, 'Admin', hash);
-  console.log('[OfficePM] Bootstrapped first admin user: ' + ADMIN_EMAIL +
-    (process.env.ADMIN_PASSWORD ? '' : ' (default password "ChangeMe123!" - set ADMIN_EMAIL/ADMIN_PASSWORD env vars and change it now)'));
+  if (ADMIN_PASSWORD_GENERATED) {
+    console.log('[OfficePM] Bootstrapped first admin user: ' + ADMIN_EMAIL);
+    console.log('[OfficePM] Generated admin password (shown once, not stored anywhere in plaintext): ' + ADMIN_PASSWORD);
+    console.log('[OfficePM] Log in and change it, or set ADMIN_EMAIL/ADMIN_PASSWORD env vars before first boot next time.');
+  } else {
+    console.log('[OfficePM] Bootstrapped first admin user: ' + ADMIN_EMAIL + ' (password from ADMIN_PASSWORD env var)');
+  }
 }
 
 // Cleanup expired sessions hourly (section 12)
@@ -665,6 +673,33 @@ app.delete('/api/tickets/:key', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// Section 9's API list omits a route for ticket_dod even though 8.4 defines the
+// table and 6.9 requires "Definition of Done (board-level checklist on every
+// ticket)". Added the obvious two routes so the feature actually persists;
+// judgment call, flagged in the report.
+app.get('/api/tickets/:key/dod', requireAuth, (req, res) => {
+  const ticket = db.prepare('SELECT * FROM tickets WHERE key = ?').get(req.params.key);
+  if (!ticket) return res.status(404).json({ error: 'ticket not found' });
+  const found = findBoard(ticket.project_slug, ticket.board_slug);
+  const settings = db.prepare('SELECT definition_of_done FROM board_settings WHERE project_slug=? AND board_slug=?')
+    .get(ticket.project_slug, ticket.board_slug);
+  const items = JSON.parse((settings && settings.definition_of_done) || '[]');
+  const state = db.prepare('SELECT item, done FROM ticket_dod WHERE ticket_key = ?').all(req.params.key);
+  const doneMap = Object.fromEntries(state.map((r) => [r.item, !!r.done]));
+  res.json(items.map((item) => ({ item, done: !!doneMap[item] })));
+});
+
+app.patch('/api/tickets/:key/dod', requireAuth, (req, res) => {
+  const ticket = db.prepare('SELECT key FROM tickets WHERE key = ?').get(req.params.key);
+  if (!ticket) return res.status(404).json({ error: 'ticket not found' });
+  const { item, done } = req.body || {};
+  if (!item) return res.status(400).json({ error: 'item required' });
+  db.prepare(`INSERT INTO ticket_dod (ticket_key, item, done) VALUES (?, ?, ?)
+    ON CONFLICT(ticket_key, item) DO UPDATE SET done = excluded.done`)
+    .run(req.params.key, item, done ? 1 : 0);
+  res.json({ ok: true });
+});
+
 // ---------------------------------------------------------------------------
 // 8. Comments (6.5)
 // ---------------------------------------------------------------------------
@@ -761,9 +796,26 @@ app.delete('/api/sprints/:id', requireAuth, (req, res) => {
 // 10. Docs / Files / Links (6.6)
 // ---------------------------------------------------------------------------
 
+// Normalizes an original filename's extension defensively before comparing
+// against the blocklist: strips a null byte and anything after it (Node
+// strings can carry one from a crafted multipart header), then trims
+// trailing whitespace/dots, which is how "evil.exe " or "evil.exe." would
+// otherwise slip past a naive path.extname() + Set.has() check.
+function safeExt(originalName) {
+  const nullIdx = originalName.indexOf('\u0000');
+  let clean = nullIdx === -1 ? originalName : originalName.slice(0, nullIdx);
+  // Strip trailing whitespace/dots from the WHOLE name before asking extname
+  // for the extension - path.extname('evil.exe.') returns just '.' (Node
+  // treats a trailing dot as "no extension"), which would otherwise let
+  // "evil.exe." or "evil.exe " sail past a naive .toLowerCase() === '.exe'
+  // check while still landing on disk with an executable-looking name.
+  clean = clean.replace(/[\s.]+$/, '');
+  return path.extname(clean).toLowerCase();
+}
+
 function fileFilterFactory() {
   return (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
+    const ext = safeExt(file.originalname);
     if (BLOCKED_EXTENSIONS.has(ext)) {
       return cb(new Error('file type ' + ext + ' is not allowed'));
     }
@@ -771,13 +823,24 @@ function fileFilterFactory() {
   };
 }
 
+// Belt-and-braces: after building a path, assert it is still inside uploads/.
+function assertInsideUploads(p) {
+  const resolved = path.resolve(p);
+  const base = path.resolve(UPLOADS_DIR) + path.sep;
+  if (!resolved.startsWith(base)) {
+    throw new Error('resolved path escapes uploads/: ' + resolved);
+  }
+  return resolved;
+}
+
 function uploadTo(dir) {
-  fs.mkdirSync(dir, { recursive: true });
+  const safeDir = assertInsideUploads(dir);
+  fs.mkdirSync(safeDir, { recursive: true });
   return multer({
     storage: multer.diskStorage({
-      destination: (req, file, cb) => cb(null, dir),
+      destination: (req, file, cb) => cb(null, safeDir),
       // Path traversal prevented: stored filenames are UUIDs, never the client-supplied name.
-      filename: (req, file, cb) => cb(null, crypto.randomUUID() + path.extname(file.originalname).toLowerCase())
+      filename: (req, file, cb) => cb(null, crypto.randomUUID() + safeExt(file.originalname))
     }),
     limits: { fileSize: MAX_FILE_BYTES },
     fileFilter: fileFilterFactory()
@@ -816,6 +879,13 @@ app.get('/api/projects/:slug/files', requireAuth, (req, res) => {
 });
 
 app.post('/api/projects/:slug/files', requireAuth, (req, res, next) => {
+  // Path traversal fix: the directory segment comes from req.params.slug, which
+  // Express URL-decodes before this handler runs. Validate against the slug
+  // allow-list from projects.json (already loaded at startup, PRD 5/6.2) rather
+  // than trying to sanitise the string - an unknown slug is a 404, not a path.
+  if (!PROJECTS_CONFIG.projects.some((p) => p.slug === req.params.slug)) {
+    return res.status(404).json({ error: 'project not found' });
+  }
   const count = db.prepare('SELECT COUNT(*) AS n FROM project_files WHERE project_slug = ?').get(req.params.slug).n;
   if (count >= MAX_FILES_PER_PROJECT) return res.status(400).json({ error: 'project already has the maximum of ' + MAX_FILES_PER_PROJECT + ' files' });
   const dir = path.join(UPLOADS_DIR, 'projects', req.params.slug);
@@ -866,6 +936,16 @@ app.get('/api/tickets/:key/files', requireAuth, (req, res) => {
 });
 
 app.post('/api/tickets/:key/files', requireAuth, (req, res, next) => {
+  // Path traversal fix: key must match the real ticket-key shape AND exist in
+  // the tickets table (PRD 5: every ticket belongs to exactly one board, keys
+  // are <PREFIX>-<NUMBER>). Both together are the allow-list; a key that
+  // parses but doesn't exist, or doesn't parse at all, is a 404.
+  if (!/^[A-Z0-9]+(-[A-Z0-9]+)*-\d+$/.test(req.params.key)) {
+    return res.status(404).json({ error: 'ticket not found' });
+  }
+  if (!db.prepare('SELECT 1 FROM tickets WHERE key = ?').get(req.params.key)) {
+    return res.status(404).json({ error: 'ticket not found' });
+  }
   const count = db.prepare('SELECT COUNT(*) AS n FROM ticket_files WHERE ticket_key = ?').get(req.params.key).n;
   if (count >= MAX_FILES_PER_TICKET) return res.status(400).json({ error: 'ticket already has the maximum of ' + MAX_FILES_PER_TICKET + ' files' });
   const dir = path.join(UPLOADS_DIR, 'tickets', req.params.key);
