@@ -197,6 +197,24 @@ assignee, description, add a comment, attach a file, or drop in a link.
 Everything saves automatically when you click away from a field or press
 Enter.
 
+### Sprints, cycles and phases (Scrum, Shape Up, Waterfall boards)
+
+Open Backlog from the sidebar (or `G` then `S`) to see your board's
+sprints, cycles or phases. Create one with a name and dates, then
+Activate it, if the board has a Definition of Ready, you will be asked to
+check off each item first. Once it's done, click Mark Completed, a retro
+is created for it automatically and a View Retro button appears right
+there. Active and completed sprints with dates show a burndown chart.
+Scrumban boards also show a velocity panel once at least one cycle is
+completed. The topbar's Sprint dropdown is a shortcut back to Backlog
+from anywhere on that board.
+
+Waterfall boards will not let you skip a phase, moving a ticket from
+Requirements straight to Testing is rejected, you have to go through
+Design and Implementation first (moving backward to fix a mistake is
+always allowed). This is on purpose, PRD 17.4, no parallel work on
+Waterfall.
+
 ### If your board is connected to GitHub
 
 Opening a pull request whose branch name or title contains the ticket key
