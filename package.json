@@ -12,10 +12,10 @@
     "node": ">=20"
   },
   "dependencies": {
-    "express": "^4.19.0",
+    "bcrypt": "^5.1.1",
     "better-sqlite3": "^11.0.0",
     "cookie-parser": "^1.4.6",
-    "multer": "^1.4.5-lts.1",
-    "bcrypt": "^5.1.1"
+    "express": "^4.19.0",
+    "multer": "^2.4.0"
   }
 }
