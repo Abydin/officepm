@@ -316,35 +316,186 @@ function Board({ projectSlug, boardSlug, onOpen, selectedKey }) {
 // Backlog (Scrum/Scrumban) and Epics (agile boards)
 // ---------------------------------------------------------------------------
 
-function Backlog({ projectSlug, boardSlug, onOpen }) {
+// Inline SVG burndown (PRD 6.9). points: [{date, ideal, actual|null}].
+function BurndownChart({ points, totalScope }) {
+  if (!points || points.length < 2) return html`<p class="dim">Not enough data for a burndown yet.</p>`;
+  const W = 480, H = 140, PAD = 24;
+  const maxY = Math.max(totalScope, 1);
+  const xFor = (i) => PAD + (i / (points.length - 1)) * (W - PAD * 2);
+  const yFor = (v) => H - PAD - (v / maxY) * (H - PAD * 2);
+  const idealPath = points.map((p, i) => (i === 0 ? 'M' : 'L') + xFor(i) + ',' + yFor(p.ideal)).join(' ');
+  const actualPts = points.filter((p) => p.actual !== null && p.actual !== undefined);
+  const actualPath = actualPts.map((p, i) => (i === 0 ? 'M' : 'L') + xFor(points.indexOf(p)) + ',' + yFor(p.actual)).join(' ');
+  return html`
+    <svg width=${W} height=${H} viewBox=${'0 0 ' + W + ' ' + H} role="img" aria-label="Sprint burndown chart">
+      <line x1=${PAD} y1=${H - PAD} x2=${W - PAD} y2=${H - PAD} stroke="var(--border)" />
+      <line x1=${PAD} y1=${PAD} x2=${PAD} y2=${H - PAD} stroke="var(--border)" />
+      <path d=${idealPath} fill="none" stroke="var(--c-gray)" stroke-width="2" stroke-dasharray="4,4" />
+      <path d=${actualPath} fill="none" stroke="var(--c-blue)" stroke-width="2" />
+      <text x=${PAD} y="14" font-size="10" fill="var(--text-dim)">${totalScope} scope</text>
+      <text x=${W - PAD} y="14" font-size="10" fill="var(--text-dim)" text-anchor="end">0</text>
+    </svg>
+    <div class="dim" style="font-size:11px">
+      <span style="color:var(--c-gray)">- - -</span> ideal &nbsp;
+      <span style="display:inline-block;width:14px;height:2px;background:var(--c-blue);vertical-align:middle"></span> actual (approximated from each ticket's last update, no daily snapshots stored)
+    </div>
+  `;
+}
+
+function SprintCard({ projectSlug, boardSlug, board, sprint, tickets, dorItems, onChanged, onOpenRetro }) {
+  const [confirmingActivate, setConfirmingActivate] = useState(false);
+  const [dorChecked, setDorChecked] = useState({});
+  const [burndown, setBurndown] = useState(null);
+  const [retroId, setRetroId] = useState(null);
+
+  const inSprint = tickets.filter((t) => t.sprint_id === sprint.id);
+  const done = inSprint.filter((t) => board.done_statuses.includes(t.status));
+  const pct = inSprint.length ? Math.round(done.length / inSprint.length * 100) : 0;
+  const totalPoints = (list) => list.reduce((sum, t) => sum + (t.points || 0), 0);
+  const allDorChecked = dorItems.length === 0 || dorItems.every((item) => dorChecked[item]);
+
+  useEffect(() => {
+    if (sprint.status === 'active' || sprint.status === 'completed') {
+      get('/api/sprints/' + sprint.id + '/burndown').then(setBurndown).catch(() => setBurndown(null));
+    }
+  }, [sprint.id, sprint.status]);
+
+  useEffect(() => {
+    if (sprint.status === 'completed') {
+      get('/api/projects/' + projectSlug + '/boards/' + boardSlug + '/retros').then((retros) => {
+        const match = retros.find((r) => r.sprint_id === sprint.id);
+        setRetroId(match ? match.id : null);
+      }).catch(() => {});
+    }
+  }, [sprint.status, sprint.id]);
+
+  const activate = async () => {
+    try {
+      await patch('/api/sprints/' + sprint.id, { status: 'active' });
+      setConfirmingActivate(false);
+      onChanged();
+    } catch (e) { alert(e.message); }
+  };
+  const complete = async () => {
+    await patch('/api/sprints/' + sprint.id, { status: 'completed' });
+    onChanged();
+  };
+
+  return html`
+    <div class="panel" key=${sprint.id} style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>${sprint.name}</strong>
+        <span class="flow-badge">${sprint.status}</span>
+      </div>
+      <div class="dim" style="margin:6px 0">
+        ${inSprint.length} tickets${board.points ? ' · ' + totalPoints(inSprint) + 'pt' : ''}
+        ${sprint.start_date ? html` · ${sprint.start_date} to ${sprint.end_date || '?'}` : ''}
+      </div>
+      <div class="progress-bar"><div class="fill" style=${'width:' + pct + '%'}></div></div>
+      <div class="toolbar" style="margin-top:8px">
+        ${sprint.status === 'planned' ? html`
+          <button class="btn" onClick=${() => setConfirmingActivate(true)}>Activate</button>
+        ` : null}
+        ${sprint.status === 'active' ? html`<button class="btn" onClick=${complete}>Mark Completed</button>` : null}
+        ${sprint.status === 'completed' && retroId ? html`
+          <button class="btn" onClick=${() => onOpenRetro(retroId)}>View Retro &rarr;</button>
+        ` : null}
+        ${sprint.status === 'completed' && !retroId ? html`<span class="dim">Retro creating...</span>` : null}
+      </div>
+      ${confirmingActivate ? html`
+        <div class="panel" style="margin-top:8px;background:var(--bg)">
+          <strong>Definition of Ready</strong>
+          <p class="dim" style="margin:4px 0">Board-level checklist on sprint entry (PRD 6.9). Not persisted per sprint, it is a gate for this action.</p>
+          ${dorItems.length === 0 ? html`<p class="dim">No Definition of Ready configured for this board.</p>` : dorItems.map((item) => html`
+            <div class="dod-item" key=${item}>
+              <input type="checkbox" checked=${!!dorChecked[item]}
+                onChange=${(e) => setDorChecked(Object.assign({}, dorChecked, { [item]: e.target.checked }))} />
+              <span>${item}</span>
+            </div>
+          `)}
+          <div class="toolbar" style="margin-top:8px">
+            <button class="btn btn-primary" disabled=${!allDorChecked} onClick=${activate}>Confirm Activate</button>
+            <button class="btn" onClick=${() => setConfirmingActivate(false)}>Cancel</button>
+          </div>
+        </div>
+      ` : null}
+      ${(sprint.status === 'active' || sprint.status === 'completed') && burndown && !burndown.insufficient_dates ? html`
+        <div style="margin-top:12px">
+          <${BurndownChart} points=${burndown.points} totalScope=${burndown.total_scope} />
+        </div>
+      ` : null}
+      ${(sprint.status === 'active' || sprint.status === 'completed') && burndown && burndown.insufficient_dates ? html`
+        <p class="dim" style="margin-top:8px">Set a start and end date on this sprint to see a burndown.</p>
+      ` : null}
+    </div>
+  `;
+}
+
+function Backlog({ projectSlug, boardSlug, onOpen, onOpenRetro }) {
   const [board, setBoard] = useState(null);
+  const [settings, setSettings] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [sprints, setSprints] = useState([]);
-  useEffect(() => {
+  const [velocity, setVelocity] = useState(null);
+  const [newSprint, setNewSprint] = useState({ name: '', start_date: '', end_date: '' });
+
+  const load = useCallback(() => {
     get('/api/projects/' + projectSlug + '/boards/' + boardSlug).then(setBoard);
+    get('/api/projects/' + projectSlug + '/boards/' + boardSlug + '/settings').then(setSettings);
     get('/api/tickets?project=' + projectSlug + '&board=' + boardSlug).then(setTickets);
     get('/api/projects/' + projectSlug + '/boards/' + boardSlug + '/sprints').then(setSprints);
   }, [projectSlug, boardSlug]);
-  if (!board) return html`<p class="dim">Loading...</p>`;
+  useEffect(load, [load]);
+
+  useEffect(() => {
+    get('/api/projects/' + projectSlug + '/boards/' + boardSlug).then((b) => {
+      if (b.flow === 'scrumban') {
+        get('/api/projects/' + projectSlug + '/boards/' + boardSlug + '/velocity').then(setVelocity);
+      }
+    });
+  }, [projectSlug, boardSlug]);
+
+  if (!board || !settings) return html`<p class="dim">Loading...</p>`;
   const backlogTickets = tickets.filter((t) => !t.sprint_id);
   const totalPoints = (list) => list.reduce((sum, t) => sum + (t.points || 0), 0);
+  const sprintNoun = board.flow === 'shapeup' ? 'Cycle' : board.flow === 'waterfall' ? 'Phase' : 'Sprint';
+
+  const createSprint = async (e) => {
+    e.preventDefault();
+    if (!newSprint.name.trim()) return;
+    await post('/api/projects/' + projectSlug + '/boards/' + boardSlug + '/sprints', {
+      name: newSprint.name.trim(),
+      start_date: newSprint.start_date || null,
+      end_date: newSprint.end_date || null
+    });
+    setNewSprint({ name: '', start_date: '', end_date: '' });
+    load();
+  };
+
   return html`
     <h2>Backlog · ${board.name}</h2>
-    <h3>Sprints / Cycles</h3>
-    <div class="card-grid">
-      ${sprints.map((s) => {
-        const inSprint = tickets.filter((t) => t.sprint_id === s.id);
-        const done = inSprint.filter((t) => board.done_statuses.includes(t.status));
-        const pct = inSprint.length ? Math.round(done.length / inSprint.length * 100) : 0;
-        return html`
-          <div class="panel" key=${s.id}>
-            <div style="display:flex;justify-content:space-between"><strong>${s.name}</strong><span class="flow-badge">${s.status}</span></div>
-            <div class="dim" style="margin:6px 0">${inSprint.length} tickets${board.points ? ' · ' + totalPoints(inSprint) + 'pt' : ''}</div>
-            <div class="progress-bar"><div class="fill" style=${'width:' + pct + '%'}></div></div>
-          </div>
-        `;
-      })}
-    </div>
+    ${velocity ? html`
+      <div class="panel" style="margin-bottom:16px">
+        <strong>Velocity</strong>
+        <p class="dim" style="margin:4px 0">
+          ${velocity.average_velocity === null ? 'Not enough completed cycles yet.' :
+            'Average ' + velocity.average_velocity + (velocity.uses_points ? ' points' : ' tickets') + ' completed per cycle, across ' + velocity.sprints.length + ' completed cycle(s).'}
+        </p>
+      </div>
+    ` : null}
+    <h3>${sprintNoun}s / Cycles</h3>
+    <form class="toolbar" onSubmit=${createSprint}>
+      <input placeholder=${'New ' + sprintNoun.toLowerCase() + ' name'} value=${newSprint.name}
+        onInput=${(e) => setNewSprint(Object.assign({}, newSprint, { name: e.target.value }))}
+        style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)" />
+      <input type="date" value=${newSprint.start_date} onInput=${(e) => setNewSprint(Object.assign({}, newSprint, { start_date: e.target.value }))} />
+      <input type="date" value=${newSprint.end_date} onInput=${(e) => setNewSprint(Object.assign({}, newSprint, { end_date: e.target.value }))} />
+      <button class="btn btn-primary" type="submit">+ Create ${sprintNoun}</button>
+    </form>
+    ${sprints.map((s) => html`
+      <${SprintCard} key=${s.id} projectSlug=${projectSlug} boardSlug=${boardSlug} board=${board} sprint=${s}
+        tickets=${tickets} dorItems=${settings.definition_of_ready || []} onChanged=${load} onOpenRetro=${onOpenRetro} />
+    `)}
     <h3 style="margin-top:24px">Unscheduled Backlog (${backlogTickets.length}${board.points ? ' · ' + totalPoints(backlogTickets) + 'pt' : ''})</h3>
     <table class="overview">
       <thead><tr><th>Key</th><th>Title</th><th>Type</th>${board.points ? html`<th>Points</th>` : null}<th>Status</th></tr></thead>
@@ -395,7 +546,7 @@ function Epics({ projectSlug, boardSlug, onOpen }) {
 // Retros (6.9)
 // ---------------------------------------------------------------------------
 
-function Retros({ projectSlug, boardSlug }) {
+function Retros({ projectSlug, boardSlug, initialRetroId, onConsumedInitial }) {
   const [list, setList] = useState([]);
   const [open, setOpenRetro] = useState(null);
   const [cards, setCards] = useState([]);
@@ -411,6 +562,16 @@ function Retros({ projectSlug, boardSlug }) {
     setOpenRetro(r);
     setCards(r.cards);
   };
+
+  // Reached from Backlog's "View Retro" button (PRD 6.10: retro auto-created
+  // on sprint completion must be reachable from the UI, not just the API).
+  useEffect(() => {
+    if (initialRetroId) {
+      openRetro(initialRetroId);
+      onConsumedInitial && onConsumedInitial();
+    }
+    // eslint-disable-next-line
+  }, [initialRetroId]);
 
   const addCard = async (column) => {
     if (!draft[column].trim()) return;
@@ -903,6 +1064,8 @@ function Shell({ me, onLogout }) {
   const [ticketKey, setTicketKey] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [boardTickets, setBoardTickets] = useState([]);
+  const [pendingRetroId, setPendingRetroId] = useState(null);
+  const [sprintOptions, setSprintOptions] = useState([]);
   const [showPalette, setShowPalette] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [theme, setThemeState] = useState(getTheme());
@@ -936,6 +1099,17 @@ function Shell({ me, onLogout }) {
 
   const parts = hash.replace('#/', '').split('/');
   // routes: overview | mine | p/:slug | p/:slug/b/:board | p/:slug/b/:board/backlog|epics|retros|standup | p/:slug/docs | admin
+
+  // Topbar Sprint dropdown (PRD 10.3). Lists the current board's sprints/
+  // cycles/phases; picking one jumps to Backlog, where the sprint's detail
+  // (progress, burndown, activate/complete) actually lives.
+  useEffect(() => {
+    if (parts[0] === 'p' && parts[2] === 'b' && parts[3]) {
+      get('/api/projects/' + parts[1] + '/boards/' + parts[3] + '/sprints').then(setSprintOptions).catch(() => setSprintOptions([]));
+    } else {
+      setSprintOptions([]);
+    }
+  }, [parts[0], parts[1], parts[3]]);
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
@@ -1002,9 +1176,9 @@ function Shell({ me, onLogout }) {
   else if (parts[0] === 'mine') screen = html`<${MyTickets} onOpen=${setTicketKey} />`;
   else if (parts[0] === 'admin') screen = html`<${Admin} />`;
   else if (parts[0] === 'p' && parts[2] === 'docs') screen = html`<${DocsFiles} projectSlug=${parts[1]} />`;
-  else if (parts[0] === 'p' && parts[2] === 'b' && parts[4] === 'backlog') screen = html`<${Backlog} projectSlug=${parts[1]} boardSlug=${parts[3]} onOpen=${setTicketKey} />`;
+  else if (parts[0] === 'p' && parts[2] === 'b' && parts[4] === 'backlog') screen = html`<${Backlog} projectSlug=${parts[1]} boardSlug=${parts[3]} onOpen=${setTicketKey} onOpenRetro=${(id) => { setPendingRetroId(id); navigate('#/p/' + parts[1] + '/b/' + parts[3] + '/retros'); }} />`;
   else if (parts[0] === 'p' && parts[2] === 'b' && parts[4] === 'epics') screen = html`<${Epics} projectSlug=${parts[1]} boardSlug=${parts[3]} onOpen=${setTicketKey} />`;
-  else if (parts[0] === 'p' && parts[2] === 'b' && parts[4] === 'retros') screen = html`<${Retros} projectSlug=${parts[1]} boardSlug=${parts[3]} />`;
+  else if (parts[0] === 'p' && parts[2] === 'b' && parts[4] === 'retros') screen = html`<${Retros} projectSlug=${parts[1]} boardSlug=${parts[3]} initialRetroId=${pendingRetroId} onConsumedInitial=${() => setPendingRetroId(null)} />`;
   else if (parts[0] === 'p' && parts[2] === 'b' && parts[4] === 'standup') screen = html`<${Standup} projectSlug=${parts[1]} boardSlug=${parts[3]} />`;
   else if (parts[0] === 'p' && parts[2] === 'b') screen = html`<${Board} projectSlug=${parts[1]} boardSlug=${parts[3]} onOpen=${setTicketKey} selectedKey=${ticketKey || boardTickets[selectedIndex]} />`;
   else if (parts[0] === 'p') screen = html`<${ProjectOverview} slug=${parts[1]} />`;
@@ -1018,6 +1192,12 @@ function Shell({ me, onLogout }) {
           <option value="">Project...</option>
           ${projects.map((p) => html`<option key=${p.slug} value=${p.slug}>${p.name}</option>`)}
         </select>
+        ${sprintOptions.length > 0 ? html`
+          <select onChange=${(e) => { if (e.target.value) navigate('#/p/' + parts[1] + '/b/' + parts[3] + '/backlog'); e.target.value = ''; }}>
+            <option value="">Sprint...</option>
+            ${sprintOptions.map((s) => html`<option key=${s.id} value=${s.id}>${s.name} (${s.status})</option>`)}
+          </select>
+        ` : null}
         <input ref=${searchRef} type="search" placeholder="/ to search" onFocus=${() => setShowPalette(true)} readOnly />
         <span class="spacer"></span>
         <span class="theme-toggle btn" onClick=${toggleTheme} title="Toggle theme">${theme === 'dark' ? 'Dark' : 'Light'}</span>
