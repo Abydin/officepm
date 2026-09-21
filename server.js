@@ -963,6 +963,29 @@ function handleUploadError(err, req, res, next) {
   next();
 }
 
+// Section 12 doesn't mention it, but this is the same class of gap as the
+// upload path traversal fixed earlier: b.url from project_docs and
+// ticket_links is rendered straight into an href in app.js, and v1
+// deliberately lets every logged-in user see every project (section 4), so
+// one user planting a javascript: URL runs in everyone else's session.
+// Preact does not sanitize URL attributes on its own. Allow-list the scheme.
+function isSafeUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch (e) {
+    return false;
+  }
+}
+
+// Same allow-list, used where a bad value is dropped to null rather than
+// rejecting the whole request (the GitHub webhook routes below: PM_TOKEN is
+// a trusted CI secret, so a malformed url shouldn't fail the ticket move,
+// it should just not become a stored href).
+function safeUrlOrNull(url) {
+  return url && isSafeUrl(url) ? url : null;
+}
+
 app.get('/api/projects/:slug/docs', requireAuth, (req, res) => {
   res.json(db.prepare('SELECT * FROM project_docs WHERE project_slug = ? ORDER BY created_at DESC').all(req.params.slug));
 });
@@ -970,6 +993,7 @@ app.get('/api/projects/:slug/docs', requireAuth, (req, res) => {
 app.post('/api/projects/:slug/docs', requireAuth, (req, res) => {
   const b = req.body || {};
   if (!b.title || !b.kind) return res.status(400).json({ error: 'title and kind required' });
+  if (b.url && !isSafeUrl(b.url)) return res.status(400).json({ error: 'url must be http: or https:' });
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO project_docs (id, project_slug, title, kind, url, body, author) VALUES (?,?,?,?,?,?,?)')
     .run(id, req.params.slug, b.title, b.kind, b.url || null, b.body || null, req.user.name);
@@ -1027,6 +1051,7 @@ app.get('/api/tickets/:key/links', requireAuth, (req, res) => {
 app.post('/api/tickets/:key/links', requireAuth, (req, res) => {
   const b = req.body || {};
   if (!b.title || !b.url) return res.status(400).json({ error: 'title and url required' });
+  if (!isSafeUrl(b.url)) return res.status(400).json({ error: 'url must be http: or https:' });
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO ticket_links (id, ticket_key, title, url, author) VALUES (?,?,?,?,?)')
     .run(id, req.params.key, b.title, b.url, req.user.name);
@@ -1156,7 +1181,7 @@ app.post('/api/github/pr-opened', requireGithubToken, (req, res) => {
     const codeReview = found.board.statuses.find((s) => /code review/i.test(s)) || found.board.statuses[0];
     db.prepare("UPDATE tickets SET status = ?, updated_at = datetime('now') WHERE key = ?").run(codeReview, key);
     db.prepare('INSERT INTO github_links (id, ticket_key, kind, repo, ref, url, actor) VALUES (?,?,?,?,?,?,?)')
-      .run(crypto.randomUUID(), key, 'pr', b.repo || 'unknown', b.branch || b.ref || '', b.url || null, b.actor || 'github');
+      .run(crypto.randomUUID(), key, 'pr', b.repo || 'unknown', b.branch || b.ref || '', safeUrlOrNull(b.url), b.actor || 'github');
     addSystemComment(key, 'PR opened' + (b.url ? ': ' + b.url : '') + ' by ' + (b.actor || 'someone') + '. Moved to "' + codeReview + '".');
     const updated = serializeTicket(db.prepare('SELECT * FROM tickets WHERE key = ?').get(key));
     broadcast('ticket.updated', updated);
@@ -1181,7 +1206,7 @@ app.post('/api/github/deploy', requireGithubToken, (req, res) => {
       : (found.board.statuses.find((s) => /qa|staging/i.test(s)) || found.board.statuses[found.board.statuses.length - 1]);
     db.prepare("UPDATE tickets SET status = ?, updated_at = datetime('now') WHERE key = ?").run(target, key);
     db.prepare('INSERT INTO github_links (id, ticket_key, kind, repo, ref, url, actor, environment) VALUES (?,?,?,?,?,?,?,?)')
-      .run(crypto.randomUUID(), key, 'deploy', b.repo || 'unknown', b.ref || b.branch || '', b.url || null, b.actor || 'github', env);
+      .run(crypto.randomUUID(), key, 'deploy', b.repo || 'unknown', b.ref || b.branch || '', safeUrlOrNull(b.url), b.actor || 'github', env);
     addSystemComment(key, 'Deployed to ' + env + (b.url ? ': ' + b.url : '') + '. Moved to "' + target + '".');
     const updated = serializeTicket(db.prepare('SELECT * FROM tickets WHERE key = ?').get(key));
     broadcast('ticket.updated', updated);
@@ -1203,7 +1228,7 @@ app.post('/api/github/release', requireGithubToken, (req, res) => {
     const done = found.board.done_statuses[0];
     db.prepare("UPDATE tickets SET status = ?, updated_at = datetime('now') WHERE key = ?").run(done, key);
     db.prepare('INSERT INTO github_links (id, ticket_key, kind, repo, ref, url, actor) VALUES (?,?,?,?,?,?,?)')
-      .run(crypto.randomUUID(), key, 'release', b.repo || 'unknown', b.tag || '', b.url || null, b.actor || 'github');
+      .run(crypto.randomUUID(), key, 'release', b.repo || 'unknown', b.tag || '', safeUrlOrNull(b.url), b.actor || 'github');
     addSystemComment(key, 'Included in release ' + (b.tag || '') + '. Moved to "' + done + '".');
     const updated = serializeTicket(db.prepare('SELECT * FROM tickets WHERE key = ?').get(key));
     broadcast('ticket.updated', updated);
