@@ -1,0 +1,21 @@
+{
+  "name": "officepm",
+  "version": "1.0.0",
+  "description": "Self-hosted project management for a small office. One Node process, one SQLite file.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "better-sqlite3": "^11.0.0",
+    "cookie-parser": "^1.4.6",
+    "multer": "^1.4.5-lts.1",
+    "bcrypt": "^5.1.1"
+  }
+}

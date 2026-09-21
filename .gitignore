@@ -1,0 +1,9 @@
+node_modules/
+.env
+pm.db
+pm.db-journal
+pm.db-wal
+pm.db-shm
+uploads/
+*.log
+.DS_Store

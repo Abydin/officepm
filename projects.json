@@ -1,0 +1,135 @@
+{
+  "projects": [
+    {
+      "slug": "food",
+      "name": "Food",
+      "description": "Office food-ordering app. Flagship project, full agile Scrum on engineering.",
+      "boards": [
+        {
+          "slug": "eng",
+          "name": "Engineering",
+          "prefix": "FOOD-ENG",
+          "icon": "code",
+          "flow": "scrum",
+          "has_github": true,
+          "agile": true,
+          "points": true,
+          "statuses": ["Backlog", "Sprint Backlog", "In Progress", "Code Review", "QA", "Done"],
+          "types": ["epic", "story", "task", "bug"],
+          "done_statuses": ["Done"],
+          "definition_of_done": [
+            "Code reviewed by another engineer",
+            "Unit tests pass",
+            "Deployed to staging",
+            "QA sign-off"
+          ],
+          "definition_of_ready": [
+            "Acceptance criteria written",
+            "Design approved (if UI change)",
+            "Estimated by the team"
+          ]
+        },
+        {
+          "slug": "design",
+          "name": "Design",
+          "prefix": "FOOD-DES",
+          "icon": "pen-tool",
+          "flow": "kanban",
+          "has_github": false,
+          "agile": false,
+          "points": false,
+          "statuses": ["Backlog", "In Progress", "Review", "Done"],
+          "types": ["task", "asset"],
+          "done_statuses": ["Done"],
+          "wip_limits": { "In Progress": 3 }
+        },
+        {
+          "slug": "support",
+          "name": "Customer Support",
+          "prefix": "FOOD-SUP",
+          "icon": "life-buoy",
+          "flow": "scrumban",
+          "has_github": false,
+          "agile": false,
+          "points": false,
+          "statuses": ["Inbox", "Triaged", "In Progress", "Waiting on Customer", "Resolved"],
+          "types": ["ticket", "bug"],
+          "done_statuses": ["Resolved"],
+          "wip_limits": { "In Progress": 5, "Triaged": 8 }
+        }
+      ]
+    },
+    {
+      "slug": "northwind",
+      "name": "Northwind",
+      "description": "Northwind product line. Shape Up on the product board, lightweight Kanban for marketing.",
+      "boards": [
+        {
+          "slug": "product",
+          "name": "Product",
+          "prefix": "NW-PRD",
+          "icon": "package",
+          "flow": "shapeup",
+          "has_github": true,
+          "agile": true,
+          "points": false,
+          "statuses": ["Bet", "Building", "Cooldown", "Shipped"],
+          "types": ["pitch", "task", "bug"],
+          "done_statuses": ["Shipped"],
+          "definition_of_done": [
+            "Scope hammered out before Building",
+            "Circuit breaker respected (6 weeks)",
+            "Shipped to production"
+          ]
+        },
+        {
+          "slug": "marketing",
+          "name": "Marketing",
+          "prefix": "NW-MKT",
+          "icon": "megaphone",
+          "flow": "kanban",
+          "has_github": false,
+          "agile": false,
+          "points": false,
+          "statuses": ["Ideas", "In Progress", "Scheduled", "Published"],
+          "types": ["post", "campaign", "asset"],
+          "done_statuses": ["Published"]
+        }
+      ]
+    },
+    {
+      "slug": "acme",
+      "name": "Acme",
+      "description": "Acme client engagement. Waterfall delivery with a dedicated QA board.",
+      "boards": [
+        {
+          "slug": "eng",
+          "name": "Engineering",
+          "prefix": "ACME-ENG",
+          "icon": "code",
+          "flow": "waterfall",
+          "has_github": true,
+          "agile": false,
+          "points": false,
+          "statuses": ["Requirements", "Design", "Implementation", "Testing", "Deployed"],
+          "types": ["task", "bug", "change-request"],
+          "done_statuses": ["Deployed"]
+        },
+        {
+          "slug": "qa",
+          "name": "QA",
+          "prefix": "ACME-QA",
+          "icon": "check-circle",
+          "flow": "kanban",
+          "has_github": false,
+          "agile": false,
+          "points": false,
+          "statuses": ["To Verify", "In Progress", "Failed", "Passed"],
+          "types": ["test-case", "bug"],
+          "done_statuses": ["Passed"],
+          "wip_limits": { "In Progress": 4 }
+        }
+      ]
+    }
+  ]
+}
