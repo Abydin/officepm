@@ -21,10 +21,11 @@ maintains the server. Part 2 is for everyone else, and is short on purpose.
 # on the office PC, inside the officepm folder
 npm install
 cp .env.example .env
-# edit .env: set SESSION-adjacent secrets are not used (sessions live in
-# SQLite), but you MUST set PM_TOKEN to a long random string, and you may
-# set ADMIN_EMAIL / ADMIN_PASSWORD for the first login. If you leave
-# ADMIN_PASSWORD unset, the server prints a random one to the terminal the
+# edit .env: you MUST set PM_TOKEN to a long random string (sessions are
+# stored in SQLite, not signed cookies, so there's no separate session
+# secret to set). ADMIN_EMAIL / ADMIN_PASSWORD are optional, for the first
+# login only. If you leave ADMIN_PASSWORD unset, the server prints a
+# random one to the terminal the
 # first time it boots, once, then never again - copy it down immediately.
 node --env-file=.env server.js
 ```
@@ -144,12 +145,19 @@ directly, then restart the service:
 sudo systemctl restart officepm
 ```
 
-The server refuses to start if `projects.json` is malformed or has a
-duplicate board prefix, and prints exactly what's wrong, so you'll know
-immediately if the edit was bad - the old process keeps running under
-systemd's `Restart=on-failure` only if the restart command itself fails to
-launch a new one; check `systemctl status officepm` after every
-`projects.json` edit.
+`systemctl restart` stops the old process first, then starts the new one -
+so if the edit was bad, the board goes down, not stays on the old config.
+The server refuses to start on a malformed `projects.json` or a duplicate
+board prefix and exits immediately with a clear error, which systemd's
+`Restart=on-failure` will retry every few seconds forever, crash-looping,
+until the file is fixed. Read the actual error with:
+
+```bash
+journalctl -u officepm -n 20 --no-pager
+```
+
+then fix `projects.json` and restart again. Always check
+`systemctl status officepm` after any `projects.json` edit.
 
 ---
 

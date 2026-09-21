@@ -130,7 +130,7 @@ function Overview() {
   return html`
     <h2>Overview</h2>
     <table class="overview">
-      <thead><tr><th>Project</th><th>Board</th><th>Open</th><th>Done (7d)</th></tr></thead>
+      <thead><tr><th>Project</th><th>Board</th><th>Open</th><th>In Progress</th><th>Done (7d)</th></tr></thead>
       <tbody>
         ${rows.map((r) => html`
           <tr key=${r.project_slug + r.board_slug}
@@ -138,6 +138,7 @@ function Overview() {
             <td>${r.project}</td>
             <td>${r.board}</td>
             <td>${r.open}</td>
+            <td>${r.in_progress}</td>
             <td>${r.done_7d}</td>
           </tr>
         `)}
@@ -223,6 +224,14 @@ function Board({ projectSlug, boardSlug, onOpen, selectedKey }) {
   }, [projectSlug, boardSlug]);
 
   useEffect(load, [load]);
+
+  // Expose the flattened, on-screen ticket order so the Shell's J/K/Enter/A
+  // shortcuts (10.6) have something to walk. Column order == board.statuses.
+  useEffect(() => {
+    if (!board) return;
+    const ordered = board.statuses.flatMap((s) => tickets.filter((t) => t.status === s).map((t) => t.key));
+    window.dispatchEvent(new CustomEvent('pm:board-tickets', { detail: ordered }));
+  }, [board, tickets]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -617,6 +626,7 @@ function TicketDrawer({ ticketKey, onClose, boards }) {
   const [newComment, setNewComment] = useState('');
   const [board, setBoard] = useState(null);
   const [dod, setDod] = useState([]);
+  const [ghEvents, setGhEvents] = useState([]);
 
   const load = useCallback(async () => {
     const t = await get('/api/tickets/' + ticketKey);
@@ -627,6 +637,7 @@ function TicketDrawer({ ticketKey, onClose, boards }) {
     get('/api/tickets/' + ticketKey + '/links').then(setLinks);
     get('/api/tickets/' + ticketKey + '/files').then(setFiles);
     if (b.agile) get('/api/tickets/' + ticketKey + '/dod').then(setDod);
+    if (b.has_github) get('/api/tickets/' + ticketKey + '/github').then(setGhEvents);
   }, [ticketKey]);
 
   useEffect(() => { load(); }, [load]);
@@ -747,6 +758,17 @@ function TicketDrawer({ ticketKey, onClose, boards }) {
             ` : null}
           </section>
         ` : null}
+        ${board.agile && dod.length > 0 ? html`
+          <section>
+            <h4>Definition of Done</h4>
+            ${dod.map((d) => html`
+              <div class="dod-item" key=${d.item}>
+                <input type="checkbox" checked=${d.done} onChange=${(e) => toggleDod(d.item, e.target.checked)} />
+                <span>${d.item}</span>
+              </div>
+            `)}
+          </section>
+        ` : null}
         <section>
           <h4>Description</h4>
           <textarea rows="4" value=${ticket.description || ''} onBlur=${(e) => save({ description: e.target.value })}
@@ -756,15 +778,21 @@ function TicketDrawer({ ticketKey, onClose, boards }) {
           <section>
             <h4>Acceptance Criteria</h4>
             <textarea rows="3" placeholder="one per line"
-              value=${(ticket.acceptance_criteria || []).join('\\n')}
-              onBlur=${(e) => save({ acceptance_criteria: e.target.value.split('\\n').filter(Boolean) })}
+              value=${(ticket.acceptance_criteria || []).join('\n')}
+              onBlur=${(e) => save({ acceptance_criteria: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
               style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)"></textarea>
           </section>
         ` : null}
         ${board.has_github ? html`
           <section>
             <h4>GitHub</h4>
-            <p class="dim">Populated automatically by webhook events (PR opened, deploy, release).</p>
+            ${ghEvents.length === 0 ? html`<p class="dim">No PR, deploy or release events yet for this ticket.</p>` : ghEvents.map((g) => html`
+              <div class="comment" key=${g.id}>
+                <span class="chip">${g.kind}</span> ${g.repo} · ${g.ref}${g.environment ? ' · ' + g.environment : ''}
+                <span class="when">${timeAgo(g.created_at)}</span>
+                ${g.url ? html`<div><a href=${g.url} target="_blank" rel="noopener">${g.url}</a></div>` : null}
+              </div>
+            `)}
           </section>
         ` : null}
         <section>
@@ -874,6 +902,7 @@ function Shell({ me, onLogout }) {
   const [projects, setProjects] = useState([]);
   const [ticketKey, setTicketKey] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [boardTickets, setBoardTickets] = useState([]);
   const [showPalette, setShowPalette] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [theme, setThemeState] = useState(getTheme());
@@ -881,6 +910,13 @@ function Shell({ me, onLogout }) {
   const gPressedAt = useRef(0);
 
   useEffect(() => { get('/api/projects').then(setProjects).catch(() => setProjects([])); }, []);
+
+  // J/K/Enter/A (10.6) walk this list, populated by Board whenever it loads.
+  useEffect(() => {
+    const handler = (e) => { setBoardTickets(e.detail || []); setSelectedIndex(0); };
+    window.addEventListener('pm:board-tickets', handler);
+    return () => window.removeEventListener('pm:board-tickets', handler);
+  }, []);
 
   // SSE subscription -> re-broadcast as DOM CustomEvents for components to react to
   useEffect(() => {
@@ -936,11 +972,30 @@ function Shell({ me, onLogout }) {
         // handled inline by Board's own create form; here we just focus it
         const input = document.querySelector('.toolbar input');
         input && input.focus();
+        return;
+      }
+      if (!boardTickets.length) return;
+      if (e.key.toLowerCase() === 'j') {
+        e.preventDefault(); setSelectedIndex((i) => Math.min(i + 1, boardTickets.length - 1)); return;
+      }
+      if (e.key.toLowerCase() === 'k') {
+        e.preventDefault(); setSelectedIndex((i) => Math.max(i - 1, 0)); return;
+      }
+      if (e.key === 'Enter') {
+        const key = boardTickets[selectedIndex];
+        if (key) setTicketKey(key);
+        return;
+      }
+      if (e.key.toLowerCase() === 'a') {
+        const key = ticketKey || boardTickets[selectedIndex];
+        if (key) patch('/api/tickets/' + key, { assignee: me.email }).then(() => {
+          window.dispatchEvent(new CustomEvent('pm:ticket-single-changed', { detail: { key } }));
+        });
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [ticketKey, showPalette, showHelp, parts.join('/')]);
+  }, [ticketKey, showPalette, showHelp, parts.join('/'), boardTickets, selectedIndex, me.email]);
 
   let screen;
   if (parts[0] === 'overview' || parts[0] === '') screen = html`<${Overview} />`;
@@ -951,7 +1006,7 @@ function Shell({ me, onLogout }) {
   else if (parts[0] === 'p' && parts[2] === 'b' && parts[4] === 'epics') screen = html`<${Epics} projectSlug=${parts[1]} boardSlug=${parts[3]} onOpen=${setTicketKey} />`;
   else if (parts[0] === 'p' && parts[2] === 'b' && parts[4] === 'retros') screen = html`<${Retros} projectSlug=${parts[1]} boardSlug=${parts[3]} />`;
   else if (parts[0] === 'p' && parts[2] === 'b' && parts[4] === 'standup') screen = html`<${Standup} projectSlug=${parts[1]} boardSlug=${parts[3]} />`;
-  else if (parts[0] === 'p' && parts[2] === 'b') screen = html`<${Board} projectSlug=${parts[1]} boardSlug=${parts[3]} onOpen=${setTicketKey} selectedKey=${ticketKey} />`;
+  else if (parts[0] === 'p' && parts[2] === 'b') screen = html`<${Board} projectSlug=${parts[1]} boardSlug=${parts[3]} onOpen=${setTicketKey} selectedKey=${ticketKey || boardTickets[selectedIndex]} />`;
   else if (parts[0] === 'p') screen = html`<${ProjectOverview} slug=${parts[1]} />`;
   else screen = html`<${Overview} />`;
 

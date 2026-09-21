@@ -477,13 +477,19 @@ app.get('/api/me', requireAuth, (req, res) => res.json(req.user));
 // ---------------------------------------------------------------------------
 
 function boardCountsFor(project, board) {
+  // Judgment call (PRD 6.11 doesn't define "Open" vs "In Progress"): the
+  // first status in the array is "not started yet" (Open), the declared
+  // done_statuses are "Done", everything else is "In Progress".
   const total = db.prepare('SELECT COUNT(*) AS n FROM tickets WHERE project_slug=? AND board_slug=?')
     .get(project.slug, board.slug).n;
   const done = db.prepare(
     'SELECT COUNT(*) AS n FROM tickets WHERE project_slug=? AND board_slug=? AND status IN (' +
     board.done_statuses.map(() => '?').join(',') + ')'
   ).get(project.slug, board.slug, ...board.done_statuses).n;
-  return { total, done, open: total - done };
+  const open = db.prepare('SELECT COUNT(*) AS n FROM tickets WHERE project_slug=? AND board_slug=? AND status = ?')
+    .get(project.slug, board.slug, board.statuses[0]).n;
+  const inProgress = total - done - open;
+  return { total, done, open, inProgress };
 }
 
 function publicBoard(project, board) {
@@ -703,6 +709,13 @@ app.patch('/api/tickets/:key/dod', requireAuth, (req, res) => {
 // ---------------------------------------------------------------------------
 // 8. Comments (6.5)
 // ---------------------------------------------------------------------------
+
+// Same omission as ticket_dod: section 9 lists no read route for github_links
+// even though 8.1 defines the table and 10.5 says the drawer needs a "GitHub
+// panel if board has has_github". Added the obvious GET, judgment call.
+app.get('/api/tickets/:key/github', requireAuth, (req, res) => {
+  res.json(db.prepare('SELECT * FROM github_links WHERE ticket_key = ? ORDER BY created_at DESC').all(req.params.key));
+});
 
 app.get('/api/tickets/:key/comments', requireAuth, (req, res) => {
   res.json(db.prepare('SELECT * FROM comments WHERE ticket_key = ? ORDER BY created_at ASC').all(req.params.key));
@@ -1120,7 +1133,7 @@ app.get('/api/overview', requireAuth, (req, res) => {
     rows.push({
       project: project.name, project_slug: project.slug,
       board: board.name, board_slug: board.slug,
-      open: counts.open, in_progress: counts.open, done_7d: done7d
+      open: counts.open, in_progress: counts.inProgress, done_7d: done7d
     });
   }
   res.json(rows);
