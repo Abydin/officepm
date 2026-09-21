@@ -640,6 +640,20 @@ app.patch('/api/tickets/:key', requireAuth, (req, res) => {
     if (field === 'status' && found && !found.board.statuses.includes(body.status)) {
       return res.status(400).json({ error: 'status must be one of: ' + found.board.statuses.join(', ') });
     }
+    // 17 open question 4, default: Waterfall phases do NOT allow parallel work,
+    // sequential only. Enforced here as "can't skip a phase going forward";
+    // moving backward (a regression) is always allowed, that's fixing the
+    // sequence, not parallelizing it.
+    if (field === 'status' && found && found.board.flow === 'waterfall' && body.status !== existing.status) {
+      const oldIdx = found.board.statuses.indexOf(existing.status);
+      const newIdx = found.board.statuses.indexOf(body.status);
+      if (newIdx > oldIdx + 1) {
+        return res.status(409).json({
+          error: 'Waterfall boards are sequential only (PRD 17.4): move through "' +
+            found.board.statuses[oldIdx + 1] + '" first, this board does not allow skipping ahead to "' + body.status + '"'
+        });
+      }
+    }
     if (field === 'type' && found && !found.board.types.includes(body.type)) {
       return res.status(400).json({ error: 'type must be one of: ' + found.board.types.join(', ') });
     }
@@ -803,6 +817,75 @@ app.delete('/api/sprints/:id', requireAuth, (req, res) => {
   db.prepare('DELETE FROM sprints WHERE id = ?').run(req.params.id);
   broadcast('sprint.deleted', { id: req.params.id });
   res.json({ ok: true });
+});
+
+// Burndown chart data (6.9: "burndown chart (inline SVG per sprint)"). Not in
+// section 9's route list, same class of omission as ticket_dod/github_links.
+// Judgment call on the shape of the data, spelled out here because there's no
+// daily-snapshot table in the schema (8.3's sprints table has no history):
+// "actual remaining" per day is approximated from each ticket's updated_at as
+// a stand-in for "the day it was marked done" - the real transition time
+// isn't tracked, only the last update. Good enough for a v1 inline SVG, not
+// audit-grade. "ideal" is a straight line from full scope at start_date to
+// zero at end_date. Scope is points if the board has points enabled, else a
+// ticket count.
+app.get('/api/sprints/:id/burndown', requireAuth, (req, res) => {
+  const sprint = db.prepare('SELECT * FROM sprints WHERE id = ?').get(req.params.id);
+  if (!sprint) return res.status(404).json({ error: 'sprint not found' });
+  const found = findBoard(sprint.project_slug, sprint.board_slug);
+  if (!found) return res.status(404).json({ error: 'board not found' });
+  const usePoints = !!found.board.points;
+  const tickets = db.prepare('SELECT * FROM tickets WHERE sprint_id = ?').all(sprint.id);
+  const scopeOf = (t) => (usePoints ? (t.points || 0) : 1);
+  const totalScope = tickets.reduce((sum, t) => sum + scopeOf(t), 0);
+
+  if (!sprint.start_date || !sprint.end_date) {
+    return res.json({ sprint_id: sprint.id, uses_points: usePoints, total_scope: totalScope, points: [], insufficient_dates: true });
+  }
+
+  const start = new Date(sprint.start_date + 'T00:00:00Z');
+  const end = new Date(sprint.end_date + 'T00:00:00Z');
+  const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+  const plotEnd = sprint.status === 'completed' ? end : (today < end ? end : today);
+  const totalDays = Math.max(1, Math.round((end - start) / 86400000));
+
+  const points = [];
+  for (let d = new Date(start); d <= plotEnd; d = new Date(d.getTime() + 86400000)) {
+    const dayIso = d.toISOString().slice(0, 10);
+    const elapsed = Math.round((d - start) / 86400000);
+    const ideal = d > end ? 0 : Math.max(0, Math.round(totalScope * (1 - elapsed / totalDays)));
+    const doneByThisDay = tickets.filter((t) =>
+      found.board.done_statuses.includes(t.status) && t.updated_at && t.updated_at.slice(0, 10) <= dayIso
+    );
+    const remaining = totalScope - doneByThisDay.reduce((sum, t) => sum + scopeOf(t), 0);
+    const actual = d <= today ? Math.max(0, remaining) : null;
+    points.push({ date: dayIso, ideal, actual });
+  }
+  res.json({ sprint_id: sprint.id, uses_points: usePoints, total_scope: totalScope, points, insufficient_dates: false });
+});
+
+// Scrumban velocity (17 open question 3, default yes): average scope
+// completed per COMPLETED sprint/cycle on this board. Points if the board
+// tracks them, else ticket count. Boards with fewer than one completed
+// sprint report velocity: null rather than 0, so the UI can say "not enough
+// data yet" instead of implying zero throughput.
+app.get('/api/projects/:slug/boards/:board/velocity', requireAuth, (req, res) => {
+  const found = findBoard(req.params.slug, req.params.board);
+  if (!found) return res.status(404).json({ error: 'board not found' });
+  const usePoints = !!found.board.points;
+  const completedSprints = db.prepare(
+    "SELECT * FROM sprints WHERE project_slug=? AND board_slug=? AND status='completed'"
+  ).all(req.params.slug, req.params.board);
+  const perSprint = completedSprints.map((s) => {
+    const tickets = db.prepare('SELECT * FROM tickets WHERE sprint_id = ?').all(s.id);
+    const done = tickets.filter((t) => found.board.done_statuses.includes(t.status));
+    const scope = done.reduce((sum, t) => sum + (usePoints ? (t.points || 0) : 1), 0);
+    return { sprint_id: s.id, name: s.name, completed_scope: scope };
+  });
+  const average = perSprint.length
+    ? Math.round((perSprint.reduce((sum, s) => sum + s.completed_scope, 0) / perSprint.length) * 10) / 10
+    : null;
+  res.json({ uses_points: usePoints, sprints: perSprint, average_velocity: average });
 });
 
 // ---------------------------------------------------------------------------
