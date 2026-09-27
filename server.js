@@ -592,14 +592,24 @@ function nextTicketKey(prefix) {
 }
 
 app.get('/api/tickets', requireAuth, (req, res) => {
-  const { project, board, assignee, mine } = req.query;
+  const { project, board, assignee, mine, q, limit } = req.query;
   let sql = 'SELECT * FROM tickets WHERE 1=1';
   const params = [];
   if (project) { sql += ' AND project_slug = ?'; params.push(project); }
   if (board) { sql += ' AND board_slug = ?'; params.push(board); }
   if (assignee) { sql += ' AND assignee = ?'; params.push(assignee); }
   if (mine === '1' || mine === 'true') { sql += ' AND assignee = ?'; params.push(req.user.email); }
+  // q and limit exist for the command palette, which used to fetch every
+  // ticket in the instance on every keystroke and filter in the browser. At
+  // the 500-ticket figure in section 7.4 that is a full table per character.
+  if (q && String(q).trim()) {
+    const needle = '%' + String(q).trim().toLowerCase() + '%';
+    sql += ' AND (lower(key) LIKE ? OR lower(title) LIKE ?)';
+    params.push(needle, needle);
+  }
   sql += ' ORDER BY updated_at DESC';
+  const cap = Number(limit);
+  if (Number.isInteger(cap) && cap > 0 && cap <= 200) { sql += ' LIMIT ' + cap; }
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map(serializeTicket));
 });
@@ -788,7 +798,28 @@ app.post('/api/projects/:slug/boards/:board/sprints', requireAuth, (req, res) =>
   if (!found) return res.status(400).json({ error: 'unknown project/board' });
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'name required' });
-  const kind = b.kind || (found.board.flow === 'shapeup' ? 'cycle' : found.board.flow === 'waterfall' ? 'phase' : 'sprint');
+  // 6.10. The default follows the flow, but an explicit kind is honoured so a
+  // Shape Up board can actually create the 2-week cooldown the section calls
+  // for. Without this, kind was derived from flow alone and "cooldown" existed
+  // in the schema while being unreachable through the API.
+  const defaultKind = found.board.flow === 'shapeup' ? 'cycle'
+    : found.board.flow === 'waterfall' ? 'phase' : 'sprint';
+  const allowedKinds = found.board.flow === 'shapeup' ? ['cycle', 'cooldown']
+    : found.board.flow === 'waterfall' ? ['phase'] : ['sprint'];
+  const kind = b.kind || defaultKind;
+  if (!allowedKinds.includes(kind)) {
+    return res.status(400).json({
+      error: 'kind must be one of: ' + allowedKinds.join(', ') + ' on a ' + found.board.flow + ' board'
+    });
+  }
+  // Section 6.10 gives each kind a default length: a 14-day sprint, a 6-week
+  // Shape Up cycle, a 2-week cooldown. Previously nothing applied them, so a
+  // sprint created without dates had none and its burndown had no axis.
+  const DEFAULT_DAYS = { sprint: 14, cycle: 42, cooldown: 14, phase: 14 };
+  let start_date = b.start_date || null;
+  let end_date = b.end_date || null;
+  if (!start_date && !end_date) start_date = todayIso();
+  if (start_date && !end_date) end_date = addDaysIso(start_date, DEFAULT_DAYS[kind] || 14);
   if (b.status === 'active') {
     const already = db.prepare("SELECT id FROM sprints WHERE project_slug=? AND board_slug=? AND status='active'")
       .get(req.params.slug, req.params.board);
@@ -797,7 +828,7 @@ app.post('/api/projects/:slug/boards/:board/sprints', requireAuth, (req, res) =>
   const id = crypto.randomUUID();
   db.prepare(`INSERT INTO sprints (id, project_slug, board_slug, name, kind, start_date, end_date, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, req.params.slug, req.params.board, b.name, kind, b.start_date || null, b.end_date || null, b.status || 'planned');
+    .run(id, req.params.slug, req.params.board, b.name, kind, start_date, end_date, b.status || 'planned');
   const sprint = db.prepare('SELECT * FROM sprints WHERE id = ?').get(id);
   broadcast('sprint.created', sprint);
   res.status(201).json(sprint);
@@ -977,6 +1008,20 @@ function handleUploadError(err, req, res, next) {
 // deliberately lets every logged-in user see every project (section 4), so
 // one user planting a javascript: URL runs in everyone else's session.
 // Preact does not sanitize URL attributes on its own. Allow-list the scheme.
+// Dates are stored as plain YYYY-MM-DD strings, matching the date inputs the
+// UI sends, so the arithmetic stays in UTC and never shifts a sprint boundary
+// by a day for a reader in another timezone.
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysIso(isoDate, days) {
+  const d = new Date(isoDate + 'T00:00:00Z');
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 function isSafeUrl(url) {
   try {
     const parsed = new URL(url);

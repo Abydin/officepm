@@ -437,7 +437,7 @@ function Backlog({ projectSlug, boardSlug, onOpen, onOpenRetro }) {
   const [tickets, setTickets] = useState([]);
   const [sprints, setSprints] = useState([]);
   const [velocity, setVelocity] = useState(null);
-  const [newSprint, setNewSprint] = useState({ name: '', start_date: '', end_date: '' });
+  const [newSprint, setNewSprint] = useState({ name: '', start_date: '', end_date: '', kind: '' });
 
   const load = useCallback(() => {
     get('/api/projects/' + projectSlug + '/boards/' + boardSlug).then(setBoard);
@@ -459,16 +459,31 @@ function Backlog({ projectSlug, boardSlug, onOpen, onOpenRetro }) {
   const backlogTickets = tickets.filter((t) => !t.sprint_id);
   const totalPoints = (list) => list.reduce((sum, t) => sum + (t.points || 0), 0);
   const sprintNoun = board.flow === 'shapeup' ? 'Cycle' : board.flow === 'waterfall' ? 'Phase' : 'Sprint';
+  // Section 6.10 lengths: 14-day sprint, 6-week cycle, 2-week cooldown. The
+  // form shows them rather than starting blank, and the server applies the same
+  // numbers when a caller omits the dates.
+  const DEFAULT_DAYS = { sprint: 14, cycle: 42, cooldown: 14, phase: 14 };
+  const chosenKind = newSprint.kind || (board.flow === 'shapeup' ? 'cycle'
+    : board.flow === 'waterfall' ? 'phase' : 'sprint');
+  const addDays = (iso, days) => {
+    const d = new Date(iso + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+  const defaultStart = new Date().toISOString().slice(0, 10);
+  const startValue = newSprint.start_date || defaultStart;
+  const endValue = newSprint.end_date || addDays(startValue, DEFAULT_DAYS[chosenKind] || 14);
 
   const createSprint = async (e) => {
     e.preventDefault();
     if (!newSprint.name.trim()) return;
     await post('/api/projects/' + projectSlug + '/boards/' + boardSlug + '/sprints', {
       name: newSprint.name.trim(),
-      start_date: newSprint.start_date || null,
-      end_date: newSprint.end_date || null
+      kind: chosenKind,
+      start_date: startValue,
+      end_date: endValue
     });
-    setNewSprint({ name: '', start_date: '', end_date: '' });
+    setNewSprint({ name: '', start_date: '', end_date: '', kind: '' });
     load();
   };
 
@@ -488,9 +503,16 @@ function Backlog({ projectSlug, boardSlug, onOpen, onOpenRetro }) {
       <input placeholder=${'New ' + sprintNoun.toLowerCase() + ' name'} value=${newSprint.name}
         onInput=${(e) => setNewSprint(Object.assign({}, newSprint, { name: e.target.value }))}
         style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)" />
-      <input type="date" value=${newSprint.start_date} onInput=${(e) => setNewSprint(Object.assign({}, newSprint, { start_date: e.target.value }))} />
-      <input type="date" value=${newSprint.end_date} onInput=${(e) => setNewSprint(Object.assign({}, newSprint, { end_date: e.target.value }))} />
-      <button class="btn btn-primary" type="submit">+ Create ${sprintNoun}</button>
+      ${board.flow === 'shapeup' ? html`
+        <select value=${chosenKind} onChange=${(e) => setNewSprint(Object.assign({}, newSprint, { kind: e.target.value, end_date: '' }))}
+          title="Shape Up runs a 6-week cycle followed by a 2-week cooldown">
+          <option value="cycle">Cycle (6 weeks)</option>
+          <option value="cooldown">Cooldown (2 weeks)</option>
+        </select>
+      ` : null}
+      <input type="date" value=${startValue} onInput=${(e) => setNewSprint(Object.assign({}, newSprint, { start_date: e.target.value, end_date: '' }))} />
+      <input type="date" value=${endValue} onInput=${(e) => setNewSprint(Object.assign({}, newSprint, { end_date: e.target.value }))} />
+      <button class="btn btn-primary" type="submit">+ Create ${board.flow === 'shapeup' ? (chosenKind === 'cooldown' ? 'Cooldown' : 'Cycle') : sprintNoun}</button>
     </form>
     ${sprints.map((s) => html`
       <${SprintCard} key=${s.id} projectSlug=${projectSlug} boardSlug=${boardSlug} board=${board} sprint=${s}
@@ -779,7 +801,7 @@ function Admin() {
 // Ticket Drawer (10.5)
 // ---------------------------------------------------------------------------
 
-function TicketDrawer({ ticketKey, onClose, boards }) {
+function TicketDrawer({ ticketKey, onClose, boards, focusTitle }) {
   const [ticket, setTicket] = useState(null);
   const [comments, setComments] = useState([]);
   const [links, setLinks] = useState([]);
@@ -788,6 +810,16 @@ function TicketDrawer({ ticketKey, onClose, boards }) {
   const [board, setBoard] = useState(null);
   const [dod, setDod] = useState([]);
   const [ghEvents, setGhEvents] = useState([]);
+  const titleRef = useRef(null);
+
+  // Opened with the E shortcut: put the caret in the title, which is the field
+  // someone reaches for first. Waits for the ticket so the input exists.
+  useEffect(() => {
+    if (focusTitle && ticket && titleRef.current) {
+      titleRef.current.focus();
+      titleRef.current.select();
+    }
+  }, [focusTitle, ticket && ticket.key]);
 
   const load = useCallback(async () => {
     const t = await get('/api/tickets/' + ticketKey);
@@ -859,7 +891,7 @@ function TicketDrawer({ ticketKey, onClose, boards }) {
       </div>
       <div class="drawer-body">
         <section>
-          <input value=${ticket.title} onBlur=${(e) => e.target.value !== ticket.title && save({ title: e.target.value })}
+          <input ref=${titleRef} value=${ticket.title} onBlur=${(e) => e.target.value !== ticket.title && save({ title: e.target.value })}
             style="width:100%;font-size:16px;font-weight:600;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)" />
         </section>
         <section>
@@ -1000,12 +1032,19 @@ function CommandPalette({ onClose, projects, onOpenTicket, onCreate }) {
 
   useEffect(() => { inputRef.current && inputRef.current.focus(); }, []);
 
+  // Search on the server, capped, and debounced. This used to GET every ticket
+  // in the instance on every keystroke and filter in the browser, which is a
+  // full table transfer per character once a board has real volume.
   useEffect(() => {
-    if (!q.trim()) { setResults([]); return; }
-    get('/api/tickets').then((all) => {
-      const needle = q.toLowerCase();
-      setResults(all.filter((t) => t.key.toLowerCase().includes(needle) || t.title.toLowerCase().includes(needle)).slice(0, 8));
-    }).catch(() => setResults([]));
+    const needle = q.trim();
+    if (!needle) { setResults([]); return; }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      get('/api/tickets?limit=8&q=' + encodeURIComponent(needle))
+        .then((rows) => { if (!cancelled) setResults(rows); })
+        .catch(() => { if (!cancelled) setResults([]); });
+    }, 150);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [q]);
 
   return html`
@@ -1037,6 +1076,7 @@ function ShortcutsHelp({ onClose }) {
     ['G then R', 'Go to Retros'],
     ['J / K', 'Next / previous ticket'],
     ['Enter', 'Open selected ticket'],
+    ['E', 'Open selected ticket, focused for editing'],
     ['A', 'Assign selected ticket to me'],
     ['/', 'Focus search'],
     ['?', 'Show this help'],
@@ -1062,6 +1102,7 @@ function Shell({ me, onLogout }) {
   const hash = useHashRoute();
   const [projects, setProjects] = useState([]);
   const [ticketKey, setTicketKey] = useState(null);
+  const [editIntent, setEditIntent] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [boardTickets, setBoardTickets] = useState([]);
   const [pendingRetroId, setPendingRetroId] = useState(null);
@@ -1157,7 +1198,14 @@ function Shell({ me, onLogout }) {
       }
       if (e.key === 'Enter') {
         const key = boardTickets[selectedIndex];
-        if (key) setTicketKey(key);
+        if (key) { setEditIntent(false); setTicketKey(key); }
+        return;
+      }
+      // 10.6 "E: edit". The drawer edits in place, so editing is opening it
+      // with the first field focused rather than a separate mode.
+      if (e.key.toLowerCase() === 'e') {
+        const key = ticketKey || boardTickets[selectedIndex];
+        if (key) { setEditIntent(true); setTicketKey(key); }
         return;
       }
       if (e.key.toLowerCase() === 'a') {
@@ -1222,7 +1270,8 @@ function Shell({ me, onLogout }) {
         </div>
         <div class="main">${screen}</div>
       </div>
-      ${ticketKey ? html`<${TicketDrawer} ticketKey=${ticketKey} onClose=${() => setTicketKey(null)} />` : null}
+      ${ticketKey ? html`<${TicketDrawer} ticketKey=${ticketKey} focusTitle=${editIntent}
+        onClose=${() => { setTicketKey(null); setEditIntent(false); }} />` : null}
       ${showPalette ? html`<${CommandPalette} onClose=${() => setShowPalette(false)} onOpenTicket=${setTicketKey}
           onCreate=${() => { const input = document.querySelector('.toolbar input'); input && input.focus(); }} />` : null}
       ${showHelp ? html`<${ShortcutsHelp} onClose=${() => setShowHelp(false)} />` : null}
