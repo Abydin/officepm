@@ -336,8 +336,8 @@ function BurndownChart({ points, totalScope }) {
       <text x=${W - PAD} y="14" font-size="10" fill="var(--text-dim)" text-anchor="end">0</text>
     </svg>
     <div class="dim" style="font-size:11px">
-      <span style="color:var(--c-gray)">- - -</span> ideal &nbsp;
-      <span style="display:inline-block;width:14px;height:2px;background:var(--c-blue);vertical-align:middle"></span> actual (approximated from each ticket's last update, no daily snapshots stored)
+      <span style="color:var(--c-gray)">- - -</span> ideal
+      <span style="display:inline-block;width:14px;height:2px;background:var(--c-blue);vertical-align:middle;margin-left:12px"></span> actual (approximated from each ticket's last update, no daily snapshots stored)
     </div>
   `;
 }
@@ -813,12 +813,19 @@ function TicketDrawer({ ticketKey, onClose, boards, focusTitle }) {
   const titleRef = useRef(null);
 
   // Opened with the E shortcut: put the caret in the title, which is the field
-  // someone reaches for first. Waits for the ticket so the input exists.
+  // someone reaches for first. The drawer loads comments, links, files and the
+  // DoD in separate requests that each re-render it, so focusing the instant
+  // the ticket arrives loses the caret again. Wait for those to settle, then
+  // focus once.
   useEffect(() => {
-    if (focusTitle && ticket && titleRef.current) {
-      titleRef.current.focus();
-      titleRef.current.select();
-    }
+    if (!focusTitle || !ticket) return;
+    const t = setTimeout(() => {
+      if (titleRef.current) {
+        titleRef.current.focus();
+        titleRef.current.select();
+      }
+    }, 350);
+    return () => clearTimeout(t);
   }, [focusTitle, ticket && ticket.key]);
 
   const load = useCallback(async () => {
