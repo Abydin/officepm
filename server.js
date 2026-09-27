@@ -14,6 +14,13 @@ const bcrypt = require('bcrypt');
 const Database = require('better-sqlite3');
 
 const ROOT = __dirname;
+// Where mutable state lives. Defaults to the code directory, which is what a plain
+// office install wants. Override to put pm.db and uploads/ on a separate volume,
+// or to give a test run its own throwaway directory.
+const DATA_DIR = process.env.PM_DATA_DIR ? path.resolve(process.env.PM_DATA_DIR) : ROOT;
+const PROJECTS_FILE = process.env.PM_PROJECTS_FILE
+  ? path.resolve(process.env.PM_PROJECTS_FILE)
+  : path.join(ROOT, 'projects.json');
 const PORT = process.env.PORT || 3000;
 const PM_TOKEN = process.env.PM_TOKEN || '';
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -39,7 +46,7 @@ function fail(msg) {
 }
 
 function loadProjectsConfig() {
-  const configPath = path.join(ROOT, 'projects.json');
+  const configPath = PROJECTS_FILE;
   let raw;
   try {
     raw = fs.readFileSync(configPath, 'utf8');
@@ -156,11 +163,12 @@ function ticketKeyRegex() {
 // 2. Database (section 8, section 13 idempotent schema)
 // ---------------------------------------------------------------------------
 
-const UPLOADS_DIR = path.join(ROOT, 'uploads');
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 fs.mkdirSync(path.join(UPLOADS_DIR, 'projects'), { recursive: true });
 fs.mkdirSync(path.join(UPLOADS_DIR, 'tickets'), { recursive: true });
 
-const db = new Database(path.join(ROOT, 'pm.db'));
+fs.mkdirSync(DATA_DIR, { recursive: true });
+const db = new Database(path.join(DATA_DIR, 'pm.db'));
 db.pragma('journal_mode = WAL'); // section 15: WAL mode mitigates SQLite corruption risk
 db.pragma('foreign_keys = ON');
 
