@@ -235,7 +235,7 @@ A single overview page showing ticket counts per project and per board:
 ```
 Project              Open   In Progress   Done (7d)
 Food                  42        11           18
-Northwind                23         8           12
+Northwind             23         8           12
 ```
 
 No charts, no filters, no drill-down.
