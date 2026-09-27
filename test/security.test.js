@@ -19,33 +19,90 @@ describe('security', () => {
       assert.equal((await c.get('/api/me')).status, 200);
     });
 
-    test('an expired session is rejected with 401', async () => {
+    // The original bug was narrower than "expired sessions were accepted", and
+    // getting the test wrong is easy. expires_at is written as
+    // new Date().toISOString(), so "2026-09-27T09:00:00.000Z", while
+    // datetime('now') returns "2026-09-27 09:30:00". Compared as bare strings,
+    // character 11 is "T" (0x54) against a space (0x20), so the stored value
+    // sorts as GREATER whenever the date part matches, whatever the time says.
+    //
+    // That means a session expiring EARLIER THE SAME DAY was accepted, while
+    // one expiring on an earlier date was correctly rejected, because there the
+    // differing date decides the comparison before character 11 is reached. A
+    // test that backdates by a whole day therefore passes with or without the
+    // fix. These tests stay inside today deliberately.
+    function todayAt(hhmmss, srv) {
+      const db = srv.db();
+      const today = db.prepare("SELECT date('now') AS d").get().d;
+      db.close();
+      return today + 'T' + hhmmss + '.000Z';
+    }
+
+    function backdate(srv, sid, isoValue) {
+      const db = srv.db();
+      const changed = db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').run(isoValue, sid);
+      db.close();
+      assert.equal(changed.changes, 1, 'the session row should exist to be backdated');
+    }
+
+    test('a session that expired earlier today is rejected with 401', async () => {
       const c = await loginAsAdmin(srv.base);
       const sid = c.cookie().split('=')[1];
 
-      // Backdate this session in the database rather than waiting seven days.
-      const db = srv.db();
-      const changed = db.prepare("UPDATE sessions SET expires_at = datetime('now', '-1 day') WHERE id = ?").run(sid);
-      db.close();
-      assert.equal(changed.changes, 1, 'the session row should exist to be backdated');
+      // Midnight UTC today, in the exact format the login route writes. Same
+      // date part as datetime('now'), so this is the case the bare string
+      // comparison got wrong.
+      backdate(srv, sid, todayAt('00:00:00', srv));
 
       const res = await c.get('/api/me');
-      assert.equal(res.status, 401, 'an expired cookie must not authenticate');
+      assert.equal(res.status, 401, 'an expiry earlier today must not authenticate');
       assert.equal((await json(res)).error, 'session expired');
     });
 
-    test('expiry is compared as a datetime, not as a string', async () => {
-      // The original bug: comparing a raw expires_at string against
-      // datetime('now') silently accepted expired rows whose format differed.
+    test('a session that expired on an earlier date is also rejected', async () => {
       const c = await loginAsAdmin(srv.base);
       const sid = c.cookie().split('=')[1];
-      const db = srv.db();
-      // An ISO-8601 string with a T separator and a Z suffix, which does not
-      // compare correctly against SQLite's 'YYYY-MM-DD HH:MM:SS' as text.
-      db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?')
-        .run(new Date(Date.now() - 86400000).toISOString(), sid);
-      db.close();
+      backdate(srv, sid, new Date(Date.now() - 86400000).toISOString());
       assert.equal((await c.get('/api/me')).status, 401);
+    });
+
+    test('a session still valid later today is accepted', async () => {
+      // The other half of the comparison: normalizing must not reject a live
+      // session. Without this, a fix that simply denied everything would pass.
+      const c = await loginAsAdmin(srv.base);
+      const sid = c.cookie().split('=')[1];
+      backdate(srv, sid, todayAt('23:59:59', srv));
+      assert.equal((await c.get('/api/me')).status, 200);
+    });
+
+    test('the hourly cleanup actually reaps an expired session', async () => {
+      // cleanupSessions() had the same defect, so it never reaped anything.
+      // It runs on boot, so a restart against the same data directory is the
+      // observable path.
+      const c = await loginAsAdmin(srv.base);
+      const sid = c.cookie().split('=')[1];
+      backdate(srv, sid, todayAt('00:00:00', srv));
+
+      const db = srv.db();
+      const before = db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE id = ?').get(sid).n;
+      db.close();
+      assert.equal(before, 1, 'the expired row is still present until a sweep runs');
+
+      const { startServer } = require('./helpers');
+      const restarted = await startServer({ env: { PM_DATA_DIR: srv.dataDir } });
+      try {
+        assert.match(restarted.output(), /cleaned up \d+ expired session/);
+        // Read through srv, which owns this data directory. restarted.db()
+        // would point at the throwaway directory startServer made for it and
+        // then never used, because PM_DATA_DIR was overridden.
+        const db2 = srv.db();
+        const after = db2.prepare('SELECT COUNT(*) AS n FROM sessions WHERE id = ?').get(sid).n;
+        db2.close();
+        assert.equal(after, 0, 'the sweep must delete it, not just ignore it');
+      } finally {
+        // Shares srv's data directory, so do not let its stop() remove it.
+        await restarted.stop().catch(() => {});
+      }
     });
   });
 
