@@ -25,10 +25,11 @@ The interesting part of this project is what is not in it.
 | Total application code | about 2,900 lines across four files |
 | Tests | 93, on `node --test`, no test framework dependency |
 
-Nothing is shipped to the browser except this application's own code. The
-backend is one file you can read start to finish in under an hour. That is the
-point: a tool a small team relies on should be one a single person can still
-hold in their head two years later.
+No CDN, no analytics, no third-party network calls. The only code the browser
+loads is this application's own, plus the vendored 3 KB Preact and htm runtime,
+served from disk. The backend is one file you can read start to finish in under
+an hour. That is the point: a tool a small team relies on should be one a single
+person can still hold in their head two years later.
 
 ## What it does
 
@@ -128,9 +129,12 @@ returns `'.'` for a name with a trailing dot.
 | `ROLLOUT.md` | Hosting, Tailscale, GitHub Actions, backups, and a user guide |
 
 `PRD.md` is the actual product specification, including its explicit out-of-scope
-list. The code was built against it section by section, and the one deliberate
-deviation from it (`multer` 2.4.0 against a pinned `1.4.5-lts.1`) is recorded in
-the git history with the reason.
+list. The code was built against it section by section. There are two deliberate
+deviations from its pinned dependency versions, both recorded in the git history
+with their reasons: `multer` 2.4.0 against a pinned `1.4.5-lts.1`, and `bcrypt`
+6.x against a pinned `5.1.1`, the latter because 5.1.1 reaches a vulnerable
+`tar` through `node-pre-gyp` and `npm audit` should be clean on a project whose
+whole claim is a small dependency tree.
 
 ## Deploying it
 
