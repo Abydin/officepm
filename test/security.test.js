@@ -13,7 +13,7 @@ describe('security', () => {
   before(async () => { srv = await startServer(); });
   after(async () => { await srv.stop(); });
 
-  describe('session expiry (4d55ea8: expiry was never enforced)', () => {
+  describe('session expiry (35ba092: expiry was never enforced)', () => {
     test('a valid session reaches a protected route', async () => {
       const c = await loginAsAdmin(srv.base);
       assert.equal((await c.get('/api/me')).status, 200);
@@ -106,7 +106,7 @@ describe('security', () => {
     });
   });
 
-  describe('password reset kills sessions (4d55ea8)', () => {
+  describe('password reset kills sessions (35ba092)', () => {
     test('a stolen cookie stops working after the password is reset', async () => {
       const admin = await loginAsAdmin(srv.base);
       const created = await json(await admin.post('/api/users', {
@@ -130,7 +130,7 @@ describe('security', () => {
     });
   });
 
-  describe('url scheme allowlist (9d7ad25)', () => {
+  describe('url scheme allowlist (f8e9edb)', () => {
     const hostile = [
       'javascript:alert(document.cookie)',
       'JavaScript:alert(1)',
@@ -168,7 +168,7 @@ describe('security', () => {
     });
   });
 
-  describe('blocked file extensions (cc5fc1f, and the trailing dot/space bypass)', () => {
+  describe('blocked file extensions (6ce0ced, and the trailing dot/space bypass)', () => {
     async function upload(c, key, filename, body) {
       const form = new FormData();
       form.append('file', new Blob([body || 'payload'], { type: 'application/octet-stream' }), filename);
