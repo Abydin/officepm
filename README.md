@@ -23,7 +23,7 @@ The interesting part of this project is what is not in it.
 | Database | one SQLite file, `better-sqlite3`, synchronous |
 | Cloud services | none, it runs on a machine in the office |
 | Total application code | about 2,900 lines across four files |
-| Tests | 93, on `node --test`, no test framework dependency |
+| Tests | 92, on `node --test`, no test framework dependency |
 
 No CDN, no analytics, no third-party network calls. The only code the browser
 loads is this application's own, plus the vendored 3 KB Preact and htm runtime,
@@ -103,7 +103,7 @@ to the code directory.
 npm test
 ```
 
-93 tests on Node's built-in test runner. They boot a real server in a child
+92 tests on Node's built-in test runner. They boot a real server in a child
 process against a throwaway data directory and talk to it over HTTP, because the
 parts most worth testing here (session cookies, multipart uploads,
 `Content-Disposition`, webhook tokens) only exist at that boundary.
@@ -124,7 +124,7 @@ returns `'.'` for a name with a trailing dot.
 | `index.html`, `app.js`, `styles.css` | The entire frontend |
 | `vendor/htm-preact.module.js` | Vendored Preact + htm runtime |
 | `projects.json` | Project and board definitions, the source of truth, not the database |
-| `test/` | 93 tests |
+| `test/` | 92 tests |
 | `PRD.md` | The specification this was built against |
 | `ROLLOUT.md` | Hosting, Tailscale, GitHub Actions, backups, and a user guide |
 
