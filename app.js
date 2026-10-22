@@ -1333,10 +1333,10 @@ function TicketDrawer({ ticketKey, onClose, boards, focusTitle }) {
             `)}
           </section>
         ` : null}
-        <section>
+        ${links.length ? html`<section>
           <h4>Links</h4>
           ${links.map((l) => html`<div class="link-row" key=${l.id}><a href=${l.url} target="_blank" rel="noopener">${l.title}</a></div>`)}
-        </section>
+        </section>` : null}
         <section>
           <h4>Attachments</h4>
           <input type="file" onChange=${uploadFile} />
