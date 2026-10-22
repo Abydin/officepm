@@ -10,6 +10,19 @@ tickets on PR open, deploy and release, so engineering status updates itself.
 
 ![Board](docs/board.png)
 
+**Try it in 30 seconds** with a populated demo workspace:
+
+```bash
+npm install && npm run seed
+node server.js          # then open http://localhost:3000
+# log in as maya.okafor@officepm.demo / demo-password
+```
+
+The seed adds about 30 tickets across all seven boards, an active sprint, two
+finished ones, three epics, a retro and six demo users. It refuses to run on a
+database that already has tickets, so it cannot overwrite real work. Demo
+password is public, so only seed a machine you do not expose.
+
 ## The constraint
 
 The interesting part of this project is what is not in it.
@@ -22,8 +35,8 @@ The interesting part of this project is what is not in it.
 | Bundler, transpiler, CSS framework | none |
 | Database | one SQLite file, `better-sqlite3`, synchronous |
 | Cloud services | none, it runs on a machine in the office |
-| Total application code | about 2,900 lines across four files |
-| Tests | 92, on `node --test`, no test framework dependency |
+| Total application code | about 3,700 lines across `server.js`, `schema.js`, `app.js` and `styles.css` |
+| Tests | 104, on `node --test`, no test framework dependency |
 
 No CDN, no analytics, no third-party network calls. The only code the browser
 loads is this application's own, plus the vendored 3 KB Preact and htm runtime,
@@ -32,6 +45,14 @@ an hour. That is the point: a tool a small team relies on should be one a single
 person can still hold in their head two years later.
 
 ## What it does
+
+**Boards you can drag.** Move a ticket by dragging it to another column, with
+the card jumping at once and snapping back with the reason if the board refuses
+the move. From the keyboard, focus a card and press `Alt` plus an arrow key. On
+a phone a status menu on the card does the same. Cards show assignee, priority,
+labels, points and due date.
+
+![Overview dashboard](docs/overview.png)
 
 **Projects and boards.** Multiple projects, each with its own boards, each board
 with its own workflow. Boards are declared in `projects.json`, not in the
@@ -103,7 +124,7 @@ to the code directory.
 npm test
 ```
 
-92 tests on Node's built-in test runner. They boot a real server in a child
+104 tests on Node's built-in test runner. They boot a real server in a child
 process against a throwaway data directory and talk to it over HTTP, because the
 parts most worth testing here (session cookies, multipart uploads,
 `Content-Disposition`, webhook tokens) only exist at that boundary.
@@ -120,11 +141,13 @@ returns `'.'` for a name with a trailing dot.
 
 | Path | What |
 |---|---|
-| `server.js` | All backend logic: auth, API, SQLite schema, GitHub webhooks, SSE |
+| `server.js` | All backend logic: auth, API, GitHub webhooks, SSE |
+| `schema.js` | The SQLite schema and its in-place migrations, shared with the seed script |
+| `scripts/seed-demo.js` | `npm run seed`, fills an empty database with a demo workspace |
 | `index.html`, `app.js`, `styles.css` | The entire frontend |
 | `vendor/htm-preact.module.js` | Vendored Preact + htm runtime |
 | `projects.json` | Project and board definitions, the source of truth, not the database |
-| `test/` | 92 tests |
+| `test/` | 104 tests |
 | `PRD.md` | The specification this was built against |
 | `ROLLOUT.md` | Hosting, Tailscale, GitHub Actions, backups, and a user guide |
 
