@@ -32,7 +32,7 @@ function freePort() {
 // Boot and wait until it answers, or fail loudly with whatever it printed. A
 // silent timeout here would send someone hunting in the wrong place.
 async function startServer(opts = {}) {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'officepm-test-'));
+  const dataDir = opts.dataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'officepm-test-'));
   const port = await freePort();
   const env = Object.assign({}, process.env, {
     PORT: String(port),

@@ -10,6 +10,19 @@ tickets on PR open, deploy and release, so engineering status updates itself.
 
 ![Board](docs/board.png)
 
+**Try it in 30 seconds** with a populated demo workspace:
+
+```bash
+npm install && npm run seed
+node server.js          # then open http://localhost:3000
+# log in as maya.okafor@officepm.demo / demo-password
+```
+
+The seed adds about 30 tickets across all seven boards, an active sprint, two
+finished ones, three epics, a retro and six demo users. It refuses to run on a
+database that already has tickets, so it cannot overwrite real work. Demo
+password is public, so only seed a machine you do not expose.
+
 ## The constraint
 
 The interesting part of this project is what is not in it.
