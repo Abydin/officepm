@@ -261,8 +261,16 @@ setInterval(() => {
 
 const app = express();
 app.set('trust proxy', 'loopback'); // Tailscale terminates TLS and forwards plain HTTP locally
+const DASHBOARD_TTL_MS = 5000;
+const dashboardCache = new Map();
+
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
+// Any write may change the dashboard, so it never serves a result older than the last write.
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') dashboardCache.clear();
+  next();
+});
 
 function isSecureRequest(req) {
   return req.secure || req.get('x-forwarded-proto') === 'https';
@@ -1200,7 +1208,9 @@ app.get('/api/overview', requireAuth, (req, res) => {
 // the active sprint's burndown, completed-sprint velocity, what needs the
 // current user, and recent activity. Computed from the same tables as the rest
 // of the API, nothing new is stored.
-app.get('/api/dashboard', requireAuth, (req, res) => {
+// The dashboard runs several queries per board on a synchronous driver, so a burst of
+// requests would stall the event loop. Cache each user's result for a few seconds.
+function computeDashboard(req) {
   const boards = [];
   const totals = { open: 0, in_progress: 0, done: 0, done_7d: 0, blocked: 0, overdue: 0 };
   const today = todayIso();
@@ -1277,7 +1287,16 @@ app.get('/api/dashboard', requireAuth, (req, res) => {
     .map((t) => ({ kind: 'status', who: t.assignee, key: t.key, title: t.title, text: t.status, at: t.updated_at }));
   const activity = comments.concat(moves).sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 10);
 
-  res.json({ totals, boards, sprint, needs_me: mine, activity });
+  return { totals, boards, sprint, needs_me: mine, activity };
+}
+
+app.get('/api/dashboard', requireAuth, (req, res) => {
+  const hit = dashboardCache.get(req.user.id);
+  if (hit && Date.now() - hit.at < DASHBOARD_TTL_MS) return res.json(hit.body);
+  const body = computeDashboard(req);
+  if (dashboardCache.size > 200) dashboardCache.clear();
+  dashboardCache.set(req.user.id, { at: Date.now(), body });
+  res.json(body);
 });
 
 app.get('/api/my-tickets', requireAuth, (req, res) => {
