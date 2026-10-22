@@ -80,6 +80,7 @@ const TICKETS = [
     ac: ['Receipt lists each item and the tip', 'Plain text version exists'] },
   { id: 'a8', b: 'food/eng', title: 'Kitchen ticket printer layout', type: 'task', level: 'task', status: 'In Progress', who: MAYA, pts: 5, ep: 'e3', sp: 's14', ago: 2, made: 8, pri: 'high', labels: ['kitchen'],
     blocked: 'Waiting on the printer SDK licence from the vendor' },
+  { id: 'a14', b: 'food/eng', title: 'Order cutoff reminder emails', type: 'task', level: 'task', status: 'Sprint Backlog', who: SAM, pts: 2, ep: 'e1', sp: 's14', ago: 1, made: 3, pri: 'medium', labels: ['ordering', 'email'], due: 4 },
   { id: 'a9', b: 'food/eng', title: 'Rate limit the ordering API', type: 'task', level: 'task', status: 'Done', who: SAM, pts: 2, sp: 's14', ago: 4, made: 8, pri: 'medium', labels: ['infra'] },
   { id: 'a10', b: 'food/eng', title: 'Dietary tags on menu items', type: 'story', level: 'story', status: 'Done', who: CHLOE, pts: 3, sp: 's14', ago: 6, made: 9, pri: 'low', labels: ['ui', 'menu'] },
   { id: 'a11', b: 'food/eng', title: 'Allergen warning banner', type: 'story', level: 'story', status: 'Done', who: CHLOE, pts: 3, sp: 's14', ago: 2, made: 7, pri: 'high', labels: ['ui', 'menu'] },
