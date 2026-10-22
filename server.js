@@ -12,6 +12,7 @@ const cookieParser = require('cookie-parser');
 const multer = require('multer');
 const bcrypt = require('bcrypt');
 const Database = require('better-sqlite3');
+const { migrate } = require('./schema');
 
 const ROOT = __dirname;
 // Where mutable state lives. Defaults to the code directory, which is what a plain
@@ -172,170 +173,7 @@ const db = new Database(path.join(DATA_DIR, 'pm.db'));
 db.pragma('journal_mode = WAL'); // section 15: WAL mode mitigates SQLite corruption risk
 db.pragma('foreign_keys = ON');
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
-  password TEXT NOT NULL,
-  is_admin INTEGER DEFAULT 0,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-  id TEXT PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  expires_at TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS counters (
-  prefix TEXT PRIMARY KEY,
-  next INTEGER NOT NULL DEFAULT 1
-);
-
-CREATE TABLE IF NOT EXISTS tickets (
-  id INTEGER PRIMARY KEY,
-  project_slug TEXT NOT NULL,
-  board_slug TEXT NOT NULL,
-  key TEXT UNIQUE NOT NULL,
-  title TEXT NOT NULL,
-  type TEXT NOT NULL,
-  status TEXT NOT NULL,
-  assignee TEXT,
-  qa_owner TEXT,
-  parent_key TEXT,
-  level TEXT,
-  description TEXT,
-  acceptance_criteria TEXT,
-  points INTEGER,
-  appetite TEXT,
-  sprint_id TEXT,
-  blocked INTEGER DEFAULT 0,
-  blocker_reason TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_tickets_board ON tickets(project_slug, board_slug);
-CREATE INDEX IF NOT EXISTS idx_tickets_assignee ON tickets(assignee);
-CREATE INDEX IF NOT EXISTS idx_tickets_sprint ON tickets(sprint_id);
-CREATE INDEX IF NOT EXISTS idx_tickets_parent ON tickets(parent_key);
-
-CREATE TABLE IF NOT EXISTS comments (
-  id INTEGER PRIMARY KEY,
-  ticket_key TEXT NOT NULL,
-  author TEXT NOT NULL,
-  body TEXT NOT NULL,
-  source TEXT DEFAULT 'user',
-  created_at TEXT DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_comments_ticket ON comments(ticket_key);
-
-CREATE TABLE IF NOT EXISTS github_links (
-  id TEXT PRIMARY KEY,
-  ticket_key TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  repo TEXT NOT NULL,
-  ref TEXT NOT NULL,
-  url TEXT,
-  actor TEXT,
-  environment TEXT,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_github_links_ticket ON github_links(ticket_key);
-
-CREATE TABLE IF NOT EXISTS project_docs (
-  id TEXT PRIMARY KEY,
-  project_slug TEXT NOT NULL,
-  title TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  url TEXT,
-  body TEXT,
-  author TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS project_files (
-  id TEXT PRIMARY KEY,
-  project_slug TEXT NOT NULL,
-  original_name TEXT NOT NULL,
-  stored_path TEXT NOT NULL,
-  size_bytes INTEGER NOT NULL,
-  mime_type TEXT,
-  uploaded_by TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS ticket_links (
-  id TEXT PRIMARY KEY,
-  ticket_key TEXT NOT NULL,
-  title TEXT NOT NULL,
-  url TEXT NOT NULL,
-  author TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS ticket_files (
-  id TEXT PRIMARY KEY,
-  ticket_key TEXT NOT NULL,
-  original_name TEXT NOT NULL,
-  stored_path TEXT NOT NULL,
-  size_bytes INTEGER NOT NULL,
-  mime_type TEXT,
-  uploaded_by TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS sprints (
-  id TEXT PRIMARY KEY,
-  project_slug TEXT NOT NULL,
-  board_slug TEXT NOT NULL,
-  name TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  start_date TEXT,
-  end_date TEXT,
-  status TEXT DEFAULT 'planned',
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS retros (
-  id TEXT PRIMARY KEY,
-  project_slug TEXT NOT NULL,
-  board_slug TEXT NOT NULL,
-  sprint_id TEXT,
-  name TEXT NOT NULL,
-  status TEXT DEFAULT 'open',
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS retro_cards (
-  id TEXT PRIMARY KEY,
-  retro_id TEXT NOT NULL,
-  column_name TEXT NOT NULL,
-  body TEXT NOT NULL,
-  author TEXT NOT NULL,
-  ticket_key TEXT,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS board_settings (
-  project_slug TEXT NOT NULL,
-  board_slug TEXT NOT NULL,
-  flow TEXT DEFAULT 'kanban',
-  agile_enabled INTEGER DEFAULT 0,
-  wip_limits TEXT,
-  definition_of_done TEXT,
-  definition_of_ready TEXT,
-  PRIMARY KEY(project_slug, board_slug)
-);
-
-CREATE TABLE IF NOT EXISTS ticket_dod (
-  ticket_key TEXT NOT NULL,
-  item TEXT NOT NULL,
-  done INTEGER DEFAULT 0,
-  PRIMARY KEY(ticket_key, item)
-);
-`);
+migrate(db);
 
 // retro_cards.column is a reserved-ish word in the PRD's schema sketch (`column`);
 // SQLite allows it quoted, but naming it column_name above avoids any ambiguity in
@@ -577,8 +415,37 @@ app.patch('/api/projects/:slug/boards/:board/settings', requireAuth, requireAdmi
 function serializeTicket(row) {
   return Object.assign({}, row, {
     acceptance_criteria: row.acceptance_criteria ? JSON.parse(row.acceptance_criteria) : [],
+    labels: parseLabels(row.labels),
     blocked: !!row.blocked
   });
+}
+
+function parseLabels(raw) {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+}
+
+// priority, labels and due_date are optional card metadata. Returns an error
+// string for the first bad value, or null. Absent keys are not checked.
+const PRIORITIES = ['urgent', 'high', 'medium', 'low'];
+function validateTicketExtras(b) {
+  if (b.priority !== undefined && b.priority !== null && !PRIORITIES.includes(b.priority)) {
+    return 'priority must be one of: ' + PRIORITIES.join(', ');
+  }
+  if (b.labels !== undefined && b.labels !== null) {
+    if (!Array.isArray(b.labels) || b.labels.length > 8 ||
+        b.labels.some((l) => typeof l !== 'string' || !l.trim() || l.length > 24)) {
+      return 'labels must be an array of up to 8 short strings';
+    }
+  }
+  if (b.due_date !== undefined && b.due_date !== null && b.due_date !== '') {
+    const ok = /^\d{4}-\d{2}-\d{2}$/.test(b.due_date) && !Number.isNaN(new Date(b.due_date + 'T00:00:00Z').getTime());
+    if (!ok) return 'due_date must be YYYY-MM-DD';
+  }
+  return null;
 }
 
 function nextTicketKey(prefix) {
@@ -622,13 +489,17 @@ app.post('/api/tickets', requireAuth, (req, res) => {
   if (!b.title) return res.status(400).json({ error: 'title required' });
   if (!board.types.includes(b.type)) return res.status(400).json({ error: 'type must be one of: ' + board.types.join(', ') });
   const status = b.status && board.statuses.includes(b.status) ? b.status : board.statuses[0];
+  const extrasErr = validateTicketExtras(b);
+  if (extrasErr) return res.status(400).json({ error: extrasErr });
 
   const key = nextTicketKey(board.prefix);
   const stmt = db.prepare(`INSERT INTO tickets
     (project_slug, board_slug, key, title, type, status, assignee, qa_owner, parent_key, level,
-     description, acceptance_criteria, points, appetite, sprint_id, blocked, blocker_reason)
+     description, acceptance_criteria, points, appetite, sprint_id, blocked, blocker_reason,
+     priority, labels, due_date)
     VALUES (@project_slug,@board_slug,@key,@title,@type,@status,@assignee,@qa_owner,@parent_key,@level,
-     @description,@acceptance_criteria,@points,@appetite,@sprint_id,@blocked,@blocker_reason)`);
+     @description,@acceptance_criteria,@points,@appetite,@sprint_id,@blocked,@blocker_reason,
+     @priority,@labels,@due_date)`);
   stmt.run({
     project_slug: found.project.slug, board_slug: board.slug, key, title: b.title, type: b.type, status,
     assignee: b.assignee || null, qa_owner: b.qa_owner || null, parent_key: b.parent_key || null,
@@ -639,7 +510,10 @@ app.post('/api/tickets', requireAuth, (req, res) => {
     appetite: board.flow === 'shapeup' ? (b.appetite || null) : null,
     sprint_id: b.sprint_id || null,
     blocked: board.agile && b.blocked ? 1 : 0,
-    blocker_reason: b.blocker_reason || null
+    blocker_reason: b.blocker_reason || null,
+    priority: b.priority || null,
+    labels: b.labels && b.labels.length ? JSON.stringify(b.labels.map((l) => l.trim())) : null,
+    due_date: b.due_date || null
   });
   const ticket = serializeTicket(db.prepare('SELECT * FROM tickets WHERE key = ?').get(key));
   broadcast('ticket.created', ticket);
@@ -654,7 +528,8 @@ app.get('/api/tickets/:key', requireAuth, (req, res) => {
 
 const TICKET_PATCHABLE = new Set([
   'title', 'type', 'status', 'assignee', 'qa_owner', 'parent_key', 'level', 'description',
-  'acceptance_criteria', 'points', 'appetite', 'sprint_id', 'blocked', 'blocker_reason'
+  'acceptance_criteria', 'points', 'appetite', 'sprint_id', 'blocked', 'blocker_reason',
+  'priority', 'labels', 'due_date'
 ]);
 
 app.patch('/api/tickets/:key', requireAuth, (req, res) => {
@@ -662,6 +537,8 @@ app.patch('/api/tickets/:key', requireAuth, (req, res) => {
   if (!existing) return res.status(404).json({ error: 'ticket not found' });
   const found = findBoard(existing.project_slug, existing.board_slug);
   const body = req.body || {};
+  const extrasErr = validateTicketExtras(body);
+  if (extrasErr) return res.status(400).json({ error: extrasErr });
   const sets = [];
   const params = {};
   for (const field of Object.keys(body)) {
@@ -688,6 +565,8 @@ app.patch('/api/tickets/:key', requireAuth, (req, res) => {
     }
     sets.push(field + ' = @' + field);
     params[field] = field === 'acceptance_criteria' ? JSON.stringify(body[field] || []) :
+      field === 'labels' ? (body[field] && body[field].length ? JSON.stringify(body[field].map((l) => l.trim())) : null) :
+      field === 'due_date' ? (body[field] || null) :
       field === 'blocked' ? (body[field] ? 1 : 0) : body[field];
   }
   if (!sets.length) return res.status(400).json({ error: 'no patchable fields provided' });
@@ -879,18 +758,16 @@ app.delete('/api/sprints/:id', requireAuth, (req, res) => {
 // audit-grade. "ideal" is a straight line from full scope at start_date to
 // zero at end_date. Scope is points if the board has points enabled, else a
 // ticket count.
-app.get('/api/sprints/:id/burndown', requireAuth, (req, res) => {
-  const sprint = db.prepare('SELECT * FROM sprints WHERE id = ?').get(req.params.id);
-  if (!sprint) return res.status(404).json({ error: 'sprint not found' });
+function computeBurndown(sprint) {
   const found = findBoard(sprint.project_slug, sprint.board_slug);
-  if (!found) return res.status(404).json({ error: 'board not found' });
+  if (!found) return null;
   const usePoints = !!found.board.points;
   const tickets = db.prepare('SELECT * FROM tickets WHERE sprint_id = ?').all(sprint.id);
   const scopeOf = (t) => (usePoints ? (t.points || 0) : 1);
   const totalScope = tickets.reduce((sum, t) => sum + scopeOf(t), 0);
 
   if (!sprint.start_date || !sprint.end_date) {
-    return res.json({ sprint_id: sprint.id, uses_points: usePoints, total_scope: totalScope, points: [], insufficient_dates: true });
+    return { sprint_id: sprint.id, uses_points: usePoints, total_scope: totalScope, points: [], insufficient_dates: true };
   }
 
   const start = new Date(sprint.start_date + 'T00:00:00Z');
@@ -911,7 +788,15 @@ app.get('/api/sprints/:id/burndown', requireAuth, (req, res) => {
     const actual = d <= today ? Math.max(0, remaining) : null;
     points.push({ date: dayIso, ideal, actual });
   }
-  res.json({ sprint_id: sprint.id, uses_points: usePoints, total_scope: totalScope, points, insufficient_dates: false });
+  return { sprint_id: sprint.id, uses_points: usePoints, total_scope: totalScope, points, insufficient_dates: false };
+}
+
+app.get('/api/sprints/:id/burndown', requireAuth, (req, res) => {
+  const sprint = db.prepare('SELECT * FROM sprints WHERE id = ?').get(req.params.id);
+  if (!sprint) return res.status(404).json({ error: 'sprint not found' });
+  const result = computeBurndown(sprint);
+  if (!result) return res.status(404).json({ error: 'board not found' });
+  res.json(result);
 });
 
 // Scrumban velocity (17 open question 3, default yes): average scope
@@ -1309,6 +1194,90 @@ app.get('/api/overview', requireAuth, (req, res) => {
     });
   }
   res.json(rows);
+});
+
+// Everything the Overview screen draws, in one round trip: headline counts,
+// the active sprint's burndown, completed-sprint velocity, what needs the
+// current user, and recent activity. Computed from the same tables as the rest
+// of the API, nothing new is stored.
+app.get('/api/dashboard', requireAuth, (req, res) => {
+  const boards = [];
+  const totals = { open: 0, in_progress: 0, done: 0, done_7d: 0, blocked: 0, overdue: 0 };
+  const today = todayIso();
+  for (const { project, board } of allBoards()) {
+    const counts = boardCountsFor(project, board);
+    const done7d = db.prepare(
+      'SELECT COUNT(*) AS n FROM tickets WHERE project_slug=? AND board_slug=? AND status IN (' +
+      board.done_statuses.map(() => '?').join(',') + ") AND updated_at >= datetime('now', '-7 days')"
+    ).get(project.slug, board.slug, ...board.done_statuses).n;
+    const blocked = db.prepare(
+      'SELECT COUNT(*) AS n FROM tickets WHERE project_slug=? AND board_slug=? AND blocked=1 AND status NOT IN (' +
+      board.done_statuses.map(() => '?').join(',') + ')'
+    ).get(project.slug, board.slug, ...board.done_statuses).n;
+    const overdue = db.prepare(
+      'SELECT COUNT(*) AS n FROM tickets WHERE project_slug=? AND board_slug=? AND due_date IS NOT NULL AND due_date < ? AND status NOT IN (' +
+      board.done_statuses.map(() => '?').join(',') + ')'
+    ).get(project.slug, board.slug, today, ...board.done_statuses).n;
+    boards.push({
+      project: project.name, project_slug: project.slug, board: board.name, board_slug: board.slug,
+      flow: board.flow, prefix: board.prefix, total: counts.total,
+      open: counts.open, in_progress: counts.inProgress, done: counts.done, done_7d: done7d
+    });
+    totals.open += counts.open; totals.in_progress += counts.inProgress; totals.done += counts.done;
+    totals.done_7d += done7d; totals.blocked += blocked; totals.overdue += overdue;
+  }
+
+  // Active sprint: the one ending soonest, with its board's completed sprints as velocity.
+  let sprint = null;
+  const active = db.prepare("SELECT * FROM sprints WHERE status='active' ORDER BY end_date ASC").get();
+  if (active) {
+    const found = findBoard(active.project_slug, active.board_slug);
+    const burndown = computeBurndown(active);
+    const usePoints = !!(found && found.board.points);
+    const scopeDone = (id) => db.prepare('SELECT * FROM tickets WHERE sprint_id = ?').all(id)
+      .filter((t) => found.board.done_statuses.includes(t.status))
+      .reduce((sum, t) => sum + (usePoints ? (t.points || 0) : 1), 0);
+    const history = db.prepare(
+      "SELECT * FROM sprints WHERE project_slug=? AND board_slug=? AND status='completed' ORDER BY start_date ASC"
+    ).all(active.project_slug, active.board_slug).map((sp) => ({ name: sp.name, completed: scopeDone(sp.id), status: 'completed' }));
+    const velocity = history.concat([{ name: active.name, completed: scopeDone(active.id), status: 'active' }]);
+    sprint = {
+      id: active.id, name: active.name, start_date: active.start_date, end_date: active.end_date,
+      project: found.project.name, project_slug: active.project_slug,
+      board: found.board.name, board_slug: active.board_slug,
+      burndown,
+      velocity: { uses_points: usePoints, sprints: velocity,
+        average: history.length ? Math.round(history.reduce((a, h) => a + h.completed, 0) / history.length * 10) / 10 : null }
+    };
+  }
+
+  // Needs me: open tickets assigned to the current user, blocked and overdue first.
+  const doneFor = (t) => {
+    const f = findBoard(t.project_slug, t.board_slug);
+    return f && f.board.done_statuses.includes(t.status);
+  };
+  const rank = { urgent: 0, high: 1, medium: 2, low: 3 };
+  const mine = db.prepare('SELECT * FROM tickets WHERE assignee = ? OR assignee = ?').all(req.user.email, req.user.name)
+    .filter((t) => !doneFor(t))
+    .map((t) => ({
+      t,
+      score: (t.blocked ? 0 : 4) + (t.due_date && t.due_date < today ? 0 : 2) +
+        (t.priority ? rank[t.priority] / 4 : 0.9)
+    }))
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 8)
+    .map(({ t }) => Object.assign(serializeTicket(t), { overdue: !!(t.due_date && t.due_date < today) }));
+
+  // Activity: latest comments plus latest ticket updates, newest first.
+  const comments = db.prepare(
+    'SELECT c.author, c.body, c.source, c.created_at AS at, c.ticket_key AS key, t.title ' +
+    'FROM comments c LEFT JOIN tickets t ON t.key = c.ticket_key ORDER BY c.created_at DESC, c.id DESC LIMIT 8'
+  ).all().map((c) => ({ kind: 'comment', who: c.author, key: c.key, title: c.title, text: c.body, system: c.source === 'system', at: c.at }));
+  const moves = db.prepare('SELECT * FROM tickets ORDER BY updated_at DESC LIMIT 8').all()
+    .map((t) => ({ kind: 'status', who: t.assignee, key: t.key, title: t.title, text: t.status, at: t.updated_at }));
+  const activity = comments.concat(moves).sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 10);
+
+  res.json({ totals, boards, sprint, needs_me: mine, activity });
 });
 
 app.get('/api/my-tickets', requireAuth, (req, res) => {
