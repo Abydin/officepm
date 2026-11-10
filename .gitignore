@@ -7,3 +7,11 @@ pm.db-shm
 uploads/
 *.log
 .DS_Store
+
+node_modules
+dist
+.data
+*.tsbuildinfo
+coverage
+playwright-report
+test-results

@@ -136,7 +136,7 @@ const DOD = {
 };
 
 function run() {
-  const ROOT = path.join(__dirname, '..');
+  const ROOT = path.join(__dirname, '..', '..');
   const DATA_DIR = process.env.PM_DATA_DIR ? path.resolve(process.env.PM_DATA_DIR) : ROOT;
   const PROJECTS_FILE = process.env.PM_PROJECTS_FILE
     ? path.resolve(process.env.PM_PROJECTS_FILE) : path.join(ROOT, 'projects.json');

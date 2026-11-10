@@ -1,23 +1,32 @@
 {
   "name": "officepm",
-  "version": "1.0.0",
-  "description": "Self-hosted project management for a small office. One Node process, one SQLite file.",
+  "version": "2.0.0-alpha.0",
   "private": true,
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
-    "test": "node --test test/*.test.js",
-    "seed": "node scripts/seed-demo.js"
-  },
+  "description": "Self-hosted project management for a small office.",
+  "packageManager": "pnpm@10.34.9",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
-  "dependencies": {
-    "bcrypt": "^6.0.0",
-    "better-sqlite3": "^11.0.0",
-    "cookie-parser": "^1.4.6",
-    "express": "^4.19.0",
-    "multer": "^2.4.0"
+  "scripts": {
+    "test:conformance": "node --test tests/conformance/*.test.js",
+    "test": "node --test tests/conformance/*.test.js",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p packages/shared && tsc --noEmit -p apps/server && tsc --noEmit -p apps/web",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "dev": "node -e \"console.log('dev arrives in P1 (server) and P3 (web). Until then run the frozen v1 server with: node legacy/server.js'); process.exit(0)\""
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "bcrypt",
+      "better-sqlite3"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "eslint": "^10.14.0",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.2"
   }
 }

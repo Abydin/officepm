@@ -15,13 +15,16 @@ const Database = require('better-sqlite3');
 const { migrate } = require('./schema');
 
 const ROOT = __dirname;
+// legacy/ sits one level below the repo root; projects.json and the default data
+// directory (pm.db, uploads/) stay at the repo root exactly where v1 kept them.
+const REPO_ROOT = path.join(ROOT, '..');
 // Where mutable state lives. Defaults to the code directory, which is what a plain
 // office install wants. Override to put pm.db and uploads/ on a separate volume,
 // or to give a test run its own throwaway directory.
-const DATA_DIR = process.env.PM_DATA_DIR ? path.resolve(process.env.PM_DATA_DIR) : ROOT;
+const DATA_DIR = process.env.PM_DATA_DIR ? path.resolve(process.env.PM_DATA_DIR) : REPO_ROOT;
 const PROJECTS_FILE = process.env.PM_PROJECTS_FILE
   ? path.resolve(process.env.PM_PROJECTS_FILE)
-  : path.join(ROOT, 'projects.json');
+  : path.join(REPO_ROOT, 'projects.json');
 const PORT = process.env.PORT || 3000;
 const PM_TOKEN = process.env.PM_TOKEN || '';
 const NODE_ENV = process.env.NODE_ENV || 'development';

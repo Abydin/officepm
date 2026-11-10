@@ -1,0 +1,14 @@
+legacy/
+tests/conformance/
+pm.db*
+uploads/
+node_modules/
+dist/
+.data/
+coverage/
+pnpm-lock.yaml
+docs/*.png
+docs/before/
+PRD.md
+ROLLOUT.md
+README.md

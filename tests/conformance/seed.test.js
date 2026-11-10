@@ -9,13 +9,13 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { startServer, client, json } = require('./helpers');
+const { startServer, client, json, REPO_ROOT, SEED_CMD } = require('./helpers');
 
-const SEED = path.join(__dirname, '..', 'scripts', 'seed-demo.js');
-const PROJECTS = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'projects.json'), 'utf8')).projects;
+const PROJECTS = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'projects.json'), 'utf8')).projects;
 
 function seed(dataDir) {
-  return spawnSync(process.execPath, [SEED], {
+  return spawnSync(SEED_CMD.cmd, SEED_CMD.args, {
+    cwd: REPO_ROOT,
     env: Object.assign({}, process.env, { PM_DATA_DIR: dataDir }), encoding: 'utf8'
   });
 }

@@ -11,9 +11,27 @@ const net = require('node:net');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const Database = require('better-sqlite3');
 
-const SERVER = path.join(__dirname, '..', 'server.js');
+const REPO_ROOT = path.join(__dirname, '..', '..');
+// The suite peeks into the legacy database file, so it borrows legacy's copy of
+// better-sqlite3 rather than adding a root dependency.
+const Database = require(require.resolve('better-sqlite3', { paths: [path.join(REPO_ROOT, 'legacy')] }));
+
+// Which server the suite exercises. OFFICEPM_SERVER_CMD is a command line split
+// on spaces; a lone .js path is run with this node. Unset, it is the frozen v1
+// server in legacy/. Commands run from the repo root so relative paths work.
+function commandFromEnv(name, fallbackScript) {
+  const raw = (process.env[name] || '').trim();
+  if (!raw) return { cmd: process.execPath, args: [path.join(REPO_ROOT, fallbackScript)] };
+  const parts = raw.split(/\s+/);
+  if (parts.length === 1 && parts[0].endsWith('.js')) {
+    return { cmd: process.execPath, args: [path.resolve(REPO_ROOT, parts[0])] };
+  }
+  return { cmd: parts[0], args: parts.slice(1) };
+}
+const SERVER_CMD = commandFromEnv('OFFICEPM_SERVER_CMD', path.join('legacy', 'server.js'));
+// Seed script spawned by seed.test.js. Override with OFFICEPM_SEED_CMD.
+const SEED_CMD = commandFromEnv('OFFICEPM_SEED_CMD', path.join('legacy', 'scripts', 'seed-demo.js'));
 
 const ADMIN = { email: 'admin@officepm.local', password: 'test-admin-password' };
 const PM_TOKEN = 'test-pm-token';
@@ -44,7 +62,7 @@ async function startServer(opts = {}) {
   }, opts.env || {});
   if (opts.projectsFile) env.PM_PROJECTS_FILE = opts.projectsFile;
 
-  const child = spawn(process.execPath, [SERVER], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(SERVER_CMD.cmd, SERVER_CMD.args, { env, cwd: REPO_ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   child.stdout.on('data', (d) => { output += d; });
   child.stderr.on('data', (d) => { output += d; });
@@ -87,7 +105,8 @@ async function bootWithConfig(config) {
   const file = path.join(dir, 'projects.json');
   fs.writeFileSync(file, typeof config === 'string' ? config : JSON.stringify(config));
   const port = await freePort();
-  const child = spawn(process.execPath, [SERVER], {
+  const child = spawn(SERVER_CMD.cmd, SERVER_CMD.args, {
+    cwd: REPO_ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(port),
       PM_DATA_DIR: dir,
@@ -153,4 +172,4 @@ async function json(res) {
   try { return JSON.parse(text); } catch { throw new Error('not JSON (' + res.status + '): ' + text.slice(0, 300)); }
 }
 
-module.exports = { startServer, bootWithConfig, client, loginAsAdmin, json, ADMIN, PM_TOKEN };
+module.exports = { REPO_ROOT, SEED_CMD, startServer, bootWithConfig, client, loginAsAdmin, json, ADMIN, PM_TOKEN };

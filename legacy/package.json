@@ -1,0 +1,18 @@
+{
+  "name": "@officepm/legacy",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Frozen v1 server, kept as the conformance oracle until v2 reaches parity.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node scripts/seed-demo.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^11.0.0",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.0",
+    "multer": "^2.4.0"
+  }
+}
