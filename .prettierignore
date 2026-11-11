@@ -8,7 +8,6 @@ dist/
 coverage/
 pnpm-lock.yaml
 docs/*.png
-docs/before/
 PRD.md
 ROLLOUT.md
 README.md

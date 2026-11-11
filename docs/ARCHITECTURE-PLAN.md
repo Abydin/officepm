@@ -286,17 +286,30 @@ What changed.
   attempt stays counted. State is in memory and resets on restart. The address is the
   socket's; behind a proxy set PM_TRUST_PROXY=1 to use the right-most X-Forwarded-For
   entry (the one the proxy itself appended).
-  Remaining limits, stated plainly. (a) A distributed guesser is slowed, not stopped:
-  8 guesses per address per 15 minutes, 100 per email before the slowdown starts, then
-  about one new address per 2 s. (b) The thresholds (30, 150, 8, 100, 2 s) are untuned
-  guesses, not measured against real use. (c) Behind a reverse proxy without PM_TRUST_PROXY
-  every client shares one address and the per-address limit becomes a global one. (d) With a
-  full pair or email map a client is bounded only by its address limit (30, not 8). (e) An
-  unknown email never gets a pair block, so repeated 401 against one email versus a 429
-  after 8 can tell a patient attacker that an account exists; the decoy compare hides
-  timing, not this. (f) During a flood past the ceiling, a legitimate user who has mistyped
-  once is held until it ages out. The compare was already async bcrypt; a test pins that
-  the event loop keeps turning while it runs. Non-string credentials are a 400.
+  Remaining limits, stated plainly. This in-memory throttle is good against casual and
+  single-source guessing. It is not a defence against a determined distributed attacker;
+  that needs an edge rate limiter or a shared store in front of the app.
+  (a) An account that does not exist never earns a pair block, so repeated 401 against one
+  email versus a 429 after eight attempts tells a patient attacker whether the account
+  exists. The decoy compare hides timing, not this.
+  (b) Past the global per-email ceiling, new addresses share one slowdown slot (one per
+  slowdownMs, 2 s) that an attacker's failures can occupy, so clean clients can be slowed
+  during a flood. A legitimate user who has mistyped once is held until it ages out.
+  (c) Many IPv6 addresses can fill the address map, and the cap is not sized per /64. A
+  full address map refuses new addresses (fail closed).
+  (d) When the pair or email map is full, a client is tracked only by its address limit
+  (30, not 8), which is looser than the pair limit.
+  Also: the distributed guesser is slowed, not stopped (8 guesses per address per 15
+  minutes, 100 per email before the slowdown starts); the thresholds (30, 150, 8, 100, 2 s)
+  are untuned guesses, not measured against real use; and behind a reverse proxy without
+  PM_TRUST_PROXY every client shares one address and the per-address limit becomes a global
+  one. The compare was already async bcrypt; a test pins that the event loop keeps turning
+  while it runs. Non-string credentials are a 400.
+- Upload extension blocklist (modules/attachments/uploads.ts). It is narrow: .exe, .sh,
+  .bat, .cmd, .js, .html and .htm. .svg, .mjs and .php are not blocked. The real defence
+  is not the list: every download is served as an attachment (never inline), with
+  X-Content-Type-Options nosniff and the CSP, so an uploaded file is not rendered or
+  executed by the browser.
 - Event streams are closed when their user's password is reset, and when their session
   logs out (EventBus.closeForUser and closeForSession). Not done: closing a stream when
   its session merely expires, which is checked only when the stream opens.
@@ -383,7 +396,7 @@ Server.
   fine for a tailnet-only office tool and worth revisiting if it is ever exposed.
 - Login throttle tuning. The thresholds are untuned, a distributed guesser is only slowed,
   and an unknown email never earns a pair block (see the Phase 4 notes). Tune against real
-  traffic.
+  traffic, and put an edge limiter or shared store in front for a distributed attacker.
 - The v1 quirks still kept on purpose: sprints on kanban and scrumban boards, three
   shapes of user, DELETE of a missing sprint, doc, file or link answering 200, and a
   webhook's raw url quoted in the system comment.
@@ -459,8 +472,8 @@ app with a one-off Playwright script against a seeded temporary server, 1440x900
 CONTRIBUTING.md, CODE_OF_CONDUCT.md (Contributor Covenant 2.1, fetched from the
 upstream repository, contact set to the maintainer's address, excluded from Prettier so it
 stays verbatim), SECURITY.md, issue and pull request templates, docs/MIGRATING-FROM-V1.md
-and an updated ROLLOUT.md. docs/board-scrolled.png and docs/before/ are v1 images no
-longer referenced by the README and were left in place.
+and an updated ROLLOUT.md. The unreferenced v1 images (docs/board-scrolled.png and
+docs/before/) have been deleted.
 
 What remains before merge.
 
