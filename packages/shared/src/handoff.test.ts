@@ -162,7 +162,7 @@ describe('handoff wire shapes', () => {
         to_status: 'Backlog',
         from_status: 'Review',
         reason: 'no',
-        assignee: 'a@b.co',
+        assignee_id: 7,
         department: 'Design',
         note: 'hi',
         attachment_ids: ['x'],
@@ -180,7 +180,7 @@ describe('handoff wire shapes', () => {
     expect(DepartmentSchema.safeParse('a\nb').success).toBe(false);
   });
   it('describes people, notices and the result', () => {
-    PersonListSchema.parse([{ email: 'a@b.co', name: 'A', department: null }]);
+    PersonListSchema.parse([{ id: 1, name: 'A', department: null }]);
     HandoffNoticeListSchema.parse([
       {
         id: 'h1',

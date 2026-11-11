@@ -60,8 +60,8 @@ export const signedIn = {
   'GET /api/dashboard': () => jsonResponse({}),
   'GET /api/handoffs/unread': [],
   'GET /api/people': [
-    { email: demoUser.email, name: 'Maya Okafor', department: 'Design' },
-    { email: 'sam@officepm.demo', name: 'Sam Adeyemi', department: 'Engineering' },
+    { id: 1, name: 'Maya Okafor', department: 'Design' },
+    { id: 2, name: 'Sam Adeyemi', department: 'Engineering' },
   ],
   'GET /api/users': [
     { id: 1, email: demoUser.email, name: 'Maya Okafor', is_admin: 1, created_at: '' },
@@ -86,7 +86,7 @@ export function handoffResult(ticket: Ticket, status: string) {
       decision: 'approve',
       from_status: ticket.status,
       to_status: status,
-      to_assignee: null,
+      to_user_id: null,
       to_department: null,
     },
   };

@@ -30,7 +30,8 @@ export interface HandoffInput {
   to_status: string;
   from_status: string;
   reason?: string;
-  assignee?: string;
+  /** A user id from GET /api/people. */
+  assignee_id?: number;
   department?: string;
   note?: string;
 }

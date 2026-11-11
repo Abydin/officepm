@@ -44,10 +44,15 @@ export function createUserService(ctx: AppContext) {
         .all() as UserListItem[];
     },
 
-    /** Name and department of everyone, for the handoff picker. Open to any signed-in user. */
+    /**
+     * The handoff picker's list, readable by any signed-in user, so it holds only what the
+     * picker needs: an opaque user id, the name and the department. Never an email or
+     * anything else from the row. (The full user list, GET /api/users, stays admin-only.)
+     * v1 has no project membership, so there is nothing to narrow it by.
+     */
     people(): Person[] {
       return orm
-        .select({ email: users.email, name: users.name, department: users.department })
+        .select({ id: users.id, name: users.name, department: users.department })
         .from(users)
         .orderBy(asc(users.name), asc(users.id))
         .all();

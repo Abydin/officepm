@@ -90,7 +90,7 @@ export const HandoffRequestSchema = z.object({
   to_status: z.string().nullish(),
   from_status: z.string().nullish(),
   reason: z.string().nullish(),
-  assignee: z.string().nullish(),
+  assignee_id: z.number().int().nullish(),
   department: z.string().nullish(),
   note: z.string().nullish(),
   attachment_ids: z.array(z.string()).nullish(),

@@ -575,11 +575,15 @@ it, else the next status; a drop on an earlier column opens on Reject.
   named) and `handoff_reads` the per-person read mark, so a department handoff is unread for each
   member until that member opens it. `GET /api/handoffs/unread` and
   `POST /api/tickets/:key/handoffs/read` serve the My Tickets list and the sidebar and top bar
-  counts; opening a ticket reads it. The `handoff.created` event carries no note or reason (the
+  counts; opening a ticket reads it. The `handoff.created` event carries no note, reason or email (the
   stream reaches everyone) and only makes clients refetch their own list.
 - Departments. Users had none, so `users.department` (nullable TEXT) was added, with
   `GET /api/people` for the pickers (the user list stays admin-only, which the conformance suite
-  pins) and `PATCH /api/users/:id/department` for admins.
+  pins). It returns `{ id, name, department }` only, never an email: the handoff names its
+  recipient by that user id (`assignee_id`), and the comment and the event carry no email
+  either (the returned ticket has its `assignee` as every ticket does). v1 has no project membership, so the list cannot be narrowed by project.
+  What v1 already showed any signed-in user: assignee and QA-owner emails on every ticket,
+  their own email on /api/me, comment authors by name. The full directory was not visible and `PATCH /api/users/:id/department` for admins.
 - Migration `0001-handoffs` is additive: the nullable column and two new tables, nothing rewritten.
   tests/data-compat compared a migrated database with v1's schema exactly; it now sets aside what
   is declared in `V2_ADDITIONS` (tests/data-compat/support/legacy.ts) and still compares everything

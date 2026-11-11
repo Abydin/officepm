@@ -96,6 +96,7 @@ describe('handoff', () => {
   let sam: Client; // frontend dev
   let tunde: Client; // second member of the Engineering department
   let events: string[];
+  const id = { maya: 0, sam: 0, tunde: 0 };
   let unsubscribe: () => void;
 
   const newTicket = async (board = 'des', status?: string): Promise<Ticket> => {
@@ -144,6 +145,14 @@ describe('handoff', () => {
     maya = await new Client(app).login('maya@x.test');
     sam = await new Client(app).login('sam@x.test');
     tunde = await new Client(app).login('tunde@x.test');
+    const people = (await sam.call('GET', '/api/people')).json as Array<{
+      id: number;
+      name: string;
+    }>;
+    const idOf = (name: string) => people.find((p) => p.name === name)!.id;
+    id.maya = idOf('Maya Okafor');
+    id.sam = idOf('Sam Adeyemi');
+    id.tunde = idOf('Tunde Bakare');
   });
   afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
   beforeEach(() => {
@@ -158,7 +167,7 @@ describe('handoff', () => {
       const t = await newTicket('des', 'Design');
       const res = await handoff(t.key, {
         decision: 'approve',
-        assignee: 'sam@x.test',
+        assignee_id: id.sam,
         note: 'Ready for build, see the spec.',
       });
       expect(res.status).toBe(200);
@@ -169,11 +178,12 @@ describe('handoff', () => {
       expect(body.comment.body).toContain('Design to Review');
       expect(body.comment.body).toContain('Ready for build, see the spec.');
       expect(body.comment.body).toContain('Sam Adeyemi');
+      expect(body.comment.body).not.toContain('@');
       expect(body.handoff).toMatchObject({
         decision: 'approve',
         from_status: 'Design',
         to_status: 'Review',
-        to_assignee: 'sam@x.test',
+        to_user_id: id.sam,
       });
 
       const stored = TicketSchema.parse((await maya.call('GET', `/api/tickets/${t.key}`)).json);
@@ -185,11 +195,12 @@ describe('handoff', () => {
     it('announces the move, the comment and the handoff on the event stream', async () => {
       const t = await newTicket('des', 'Design');
       events.length = 0;
-      await handoff(t.key, { decision: 'approve', assignee: 'sam@x.test' });
+      await handoff(t.key, { decision: 'approve', assignee_id: id.sam });
       const names = events.map((e) => /^event: (\S+)/.exec(e)?.[1]);
       expect(names).toEqual(['ticket.updated', 'comment.created', 'handoff.created']);
       const handoffEvent = events.find((e) => e.startsWith('event: handoff.created'))!;
-      expect(handoffEvent).toContain('"to_assignee":"sam@x.test"');
+      expect(handoffEvent).toContain(`"to_user_id":${id.sam}`);
+      expect(handoffEvent).not.toContain('@');
       // The stream reaches every signed-in user, so it carries no note or reason.
       expect(handoffEvent).not.toContain('note');
     });
@@ -271,11 +282,11 @@ describe('handoff', () => {
       expect((await admin.call('GET', `/api/tickets/${t.key}`)).json.status).toBe('Review');
     });
 
-    it('rejects an unknown assignee or department, and changes nothing', async () => {
+    it('rejects an unknown assignee id or department, and changes nothing', async () => {
       const t = await newTicket('des', 'Design');
-      const user = await handoff(t.key, { decision: 'approve', assignee: 'ghost@x.test' });
+      const user = await handoff(t.key, { decision: 'approve', assignee_id: 99999 });
       expect(user.status).toBe(400);
-      expect(user.json.error).toMatch(/existing user/);
+      expect(user.json.error).toMatch(/assignee_id must be an existing user/);
       const dept = await handoff(t.key, { decision: 'approve', department: 'Piracy' });
       expect(dept.status).toBe(400);
       expect(dept.json.error).toMatch(/unknown department/);
@@ -343,7 +354,7 @@ describe('handoff', () => {
       const t = await newTicket('des', 'Design');
       await handoff(t.key, {
         decision: 'approve',
-        assignee: 'sam@x.test',
+        assignee_id: id.sam,
         note: 'Over to you',
       });
       const mine = (await unread(sam)).filter((n) => n.ticket_key === t.key);
@@ -380,12 +391,12 @@ describe('handoff', () => {
 
     it('does not nudge you about your own handoff, nor a department when a person was chosen', async () => {
       const t = await newTicket('des', 'Design');
-      await handoff(t.key, { decision: 'approve', assignee: 'maya@x.test' }, maya);
+      await handoff(t.key, { decision: 'approve', assignee_id: id.maya }, maya);
       expect((await unread(maya)).some((n) => n.ticket_key === t.key)).toBe(false);
       const u = await newTicket('des', 'Design');
       await handoff(u.key, {
         decision: 'approve',
-        assignee: 'sam@x.test',
+        assignee_id: id.sam,
         department: 'Engineering',
       });
       expect((await unread(tunde)).some((n) => n.ticket_key === u.key)).toBe(false);
@@ -393,7 +404,7 @@ describe('handoff', () => {
 
     it('goes away with the ticket', async () => {
       const t = await newTicket('des', 'Design');
-      await handoff(t.key, { decision: 'approve', assignee: 'sam@x.test' });
+      await handoff(t.key, { decision: 'approve', assignee_id: id.sam });
       await sam.call('POST', `/api/tickets/${t.key}/handoffs/read`, {});
       await admin.call('DELETE', `/api/tickets/${t.key}`);
       expect(rows('ticket_handoffs', t.key)).toHaveLength(0);
@@ -408,17 +419,26 @@ describe('handoff', () => {
   });
 
   describe('departments', () => {
-    it('lists people with their department to any signed-in user', async () => {
+    it('lists people to any signed-in user as id, name and department, and nothing else', async () => {
       const res = await sam.call('GET', '/api/people');
       expect(res.status).toBe(200);
       const people = PersonListSchema.parse(res.json);
-      expect(people.find((p) => p.email === 'maya@x.test')).toEqual({
-        email: 'maya@x.test',
+      expect(people.find((p) => p.id === id.maya)).toEqual({
+        id: id.maya,
         name: 'Maya Okafor',
         department: 'Design',
       });
-      expect(people.find((p) => p.email === ADMIN)?.department).toBeNull();
-      expect(JSON.stringify(people)).not.toContain('password');
+      const known = [id.maya, id.sam, id.tunde];
+      expect(people.find((p) => !known.includes(p.id))?.department).toBeNull();
+      // A non-admin gets no emails, and no field beyond the three the picker needs.
+      const text = JSON.stringify(res.json);
+      expect(text).not.toContain('@');
+      expect(text).not.toContain('password');
+      for (const row of res.json as Array<Record<string, unknown>>) {
+        expect(Object.keys(row).sort()).toEqual(['department', 'id', 'name']);
+      }
+      // The full user list, which does carry emails, is still refused to them.
+      expect((await sam.call('GET', '/api/users')).status).toBe(403);
     });
 
     it('lets only an admin set or clear a department, and validates it', async () => {

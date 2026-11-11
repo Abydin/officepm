@@ -499,9 +499,13 @@ export const DepartmentResultSchema = z.object({
 });
 export type DepartmentResult = z.infer<typeof DepartmentResultSchema>;
 
-/** GET /api/people: who a ticket can be handed to. Open to any signed-in user. */
+/**
+ * GET /api/people: who a ticket can be handed to. Any signed-in user may read it, so it
+ * carries what the picker needs and nothing more: an opaque user id (what the handoff
+ * route accepts), a display name and the department. No email.
+ */
 export const PersonSchema = z.object({
-  email: z.string(),
+  id: z.number().int(),
   name: z.string(),
   department: z.string().nullable(),
 });
@@ -534,7 +538,7 @@ export const HandoffResultSchema = z.object({
     decision: HandoffDecisionSchema,
     from_status: z.string(),
     to_status: z.string(),
-    to_assignee: z.string().nullable(),
+    to_user_id: z.number().int().nullable(),
     to_department: z.string().nullable(),
   }),
 });

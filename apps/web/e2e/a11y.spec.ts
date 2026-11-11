@@ -195,10 +195,15 @@ for (const theme of ['dark', 'light'] as const) {
         },
       });
       const { key } = (await created.json()) as { key: string };
+      const people = (await (await sam.request.get('/api/people')).json()) as Array<{
+        id: number;
+        name: string;
+      }>;
+      const mayaId = people.find((p) => p.name === 'Maya Okafor')!.id;
       const handoff = await sam.request.post(`/api/tickets/${key}/handoff`, {
         data: {
           decision: 'approve',
-          assignee: 'maya.okafor@officepm.demo',
+          assignee_id: mayaId,
           note: 'Please review the spacing',
         },
       });

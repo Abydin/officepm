@@ -11,7 +11,7 @@ export function userRoutes(ctx: AppContext) {
 
   router.get('/users', ...admin, (c) => c.json(service.list()));
 
-  // Name and department only, so the handoff picker works for people who are not admins.
+  // Id, name and department only (no emails), so the handoff picker works for people who are not admins.
   router.get('/people', requireAuth(ctx), (c) => c.json(service.people()));
 
   router.post('/users', ...admin, async (c) => c.json(await service.create(c.get('body')), 201));

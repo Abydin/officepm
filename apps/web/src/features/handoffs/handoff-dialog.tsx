@@ -151,7 +151,7 @@ export function HandoffDialog({
           to_status: to,
           from_status: ticket.status,
           ...(rejecting ? { reason: reason.trim() } : {}),
-          ...(assignee ? { assignee } : {}),
+          ...(assignee ? { assignee_id: Number(assignee) } : {}),
           ...(department ? { department } : {}),
           ...(note.trim() ? { note: note.trim() } : {}),
         },
@@ -300,7 +300,8 @@ export function HandoffDialog({
                       // A person from another department no longer fits the filter.
                       if (
                         e.target.value &&
-                        everyone.find((p) => p.email === assignee)?.department !== e.target.value
+                        everyone.find((p) => String(p.id) === assignee)?.department !==
+                          e.target.value
                       ) {
                         setAssignee('');
                       }
@@ -328,7 +329,7 @@ export function HandoffDialog({
                     </option>
                     {department
                       ? candidates.map((p) => (
-                          <option key={p.email} value={p.email}>
+                          <option key={p.id} value={String(p.id)}>
                             {p.name}
                           </option>
                         ))
@@ -339,7 +340,7 @@ export function HandoffDialog({
                               {candidates
                                 .filter((p) => (p.department ?? '') === dept)
                                 .map((p) => (
-                                  <option key={p.email} value={p.email}>
+                                  <option key={p.id} value={String(p.id)}>
                                     {p.name}
                                   </option>
                                 ))}

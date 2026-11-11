@@ -75,15 +75,18 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
         throw badRequest('note must be ' + HANDOFF_NOTE_MAX + ' characters or fewer');
       }
 
-      const assigneeEmail = text(b.assignee)?.toLowerCase() ?? null;
-      const assignee = assigneeEmail
-        ? orm
-            .select({ email: users.email, name: users.name })
-            .from(users)
-            .where(eq(users.email, assigneeEmail))
-            .get()
-        : undefined;
-      if (assigneeEmail && !assignee) throw badRequest('assignee must be an existing user');
+      // People are named by user id: the picker never sees emails (GET /api/people has none).
+      const assigneeId = typeof b.assignee_id === 'number' ? b.assignee_id : null;
+      const assignee =
+        assigneeId === null
+          ? undefined
+          : orm
+              .select({ id: users.id, email: users.email, name: users.name })
+              .from(users)
+              .where(eq(users.id, assigneeId))
+              .get();
+      if (assigneeId !== null && !assignee)
+        throw badRequest('assignee_id must be an existing user');
 
       const requestedDepartment = text(b.department);
       let department: string | null = null;
@@ -118,7 +121,7 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
           : `Sent back from ${existing.status} to ${plan.to}.`,
       ];
       if (plan.reason) lines.push(`Reason: ${plan.reason}`);
-      if (assignee) lines.push(`To: ${assignee.name} (${assignee.email})`);
+      if (assignee) lines.push(`To: ${assignee.name}`);
       if (department) lines.push(`Department: ${department}`);
       let body = lines.join('\n');
       if (note) body += '\n\n' + note;
@@ -163,13 +166,13 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
       events.broadcast('ticket.updated', ticket);
       comments.announce(comment);
       // The stream reaches every signed-in user, so it names who and where but carries
-      // neither the note nor the reason: the recipient fetches those from /handoffs/unread.
+      // neither the note nor the reason, and ids rather than emails: the recipient fetches those from /handoffs/unread.
       events.broadcast('handoff.created', {
         id: handoffId,
         ticket_key: key,
         decision: plan.decision,
-        from_email: user.email,
-        to_assignee: assignee?.email ?? null,
+        from_user_id: user.id,
+        to_user_id: assignee?.id ?? null,
         to_department: department,
       });
       return {
@@ -180,7 +183,7 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
           decision: plan.decision,
           from_status: existing.status,
           to_status: plan.to,
-          to_assignee: assignee?.email ?? null,
+          to_user_id: assignee?.id ?? null,
           to_department: department,
         },
       };

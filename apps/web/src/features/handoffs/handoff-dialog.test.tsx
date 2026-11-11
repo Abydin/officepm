@@ -9,10 +9,10 @@ import { jsonResponse, stubApi } from '@/test/helpers';
 import { HandoffDialog } from './handoff-dialog';
 
 const people = [
-  { email: 'maya@officepm.demo', name: 'Maya Okafor', department: 'Design' },
-  { email: 'sam@officepm.demo', name: 'Sam Adeyemi', department: 'Engineering' },
-  { email: 'tunde@officepm.demo', name: 'Tunde Bakare', department: 'Engineering' },
-  { email: 'pat@officepm.demo', name: 'Pat Lee', department: null },
+  { id: 1, name: 'Maya Okafor', department: 'Design' },
+  { id: 2, name: 'Sam Adeyemi', department: 'Engineering' },
+  { id: 3, name: 'Tunde Bakare', department: 'Engineering' },
+  { id: 4, name: 'Pat Lee', department: null },
 ];
 
 const waterfall: Board = {
@@ -37,7 +37,7 @@ const result = (to: string) => ({
     decision: 'approve',
     from_status: 'Backlog',
     to_status: to,
-    to_assignee: null,
+    to_user_id: null,
     to_department: null,
   },
 });
@@ -130,10 +130,7 @@ describe('HandoffDialog', () => {
   it('sends the decision, target, person, note and the status it saw, then reports done', async () => {
     const { user, posts, onDone } = setup({ status: 'In Progress' });
     await screen.findByRole('option', { name: 'Sam Adeyemi' });
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Hand over to' }),
-      'sam@officepm.demo',
-    );
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Hand over to' }), '2');
     await user.type(screen.getByRole('textbox', { name: /Note/ }), 'Over to you');
     await user.click(screen.getByRole('button', { name: 'Approve and move' }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
@@ -144,7 +141,7 @@ describe('HandoffDialog', () => {
           decision: 'approve',
           to_status: 'Review',
           from_status: 'In Progress',
-          assignee: 'sam@officepm.demo',
+          assignee_id: 2,
           note: 'Over to you',
           attachment_ids: [],
         },
