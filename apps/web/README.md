@@ -31,7 +31,7 @@ bare `tsc -p apps/web`.
 | `pnpm typecheck`           | Server, shared, web and data-compat types                        |
 | `pnpm test:unit`           | Every package's Vitest suite, web included                       |
 | `pnpm run build:web`       | Production build into `apps/web/dist`                            |
-| `pnpm test:e2e`            | Builds server and client, then one Playwright smoke test         |
+| `pnpm test:e2e`            | Builds server and client, then the Playwright suite (smoke, board, drawer, axe) |
 
 Playwright needs a browser once: `pnpm --filter @officepm/web exec playwright install chromium`.
 The e2e run seeds a throwaway database in the OS temp directory (`e2e/serve.mjs`); it never touches
@@ -92,15 +92,40 @@ server's SSE events are mapped to keys in `features/events/event-keys.ts`; the s
 5. Add one route in `src/app/router.tsx`, and a sidebar or tab link if people need to reach it.
 6. Add a component test using `renderApp` and `stubApi` from `src/test/helpers.tsx`.
 
-## Status (phase 3a)
+## Status (phase 3b)
 
-Built: login, auth gate, app shell (top bar, project sidebar, phone nav sheet, theme), overview
-dashboard, project list, project page, and the board frame (header, ticket count, quick-add, view tabs).
+Built, on top of 3a (login, auth gate, app shell, overview, project list and page, board frame):
 
-Placeholders, labelled in the UI: the Board tab shows live per-status counts instead of draggable columns
-(3b), and the Backlog tab (3b) and Epics, Retros and Standup tabs (3c) say which phase builds them. Not
-started: ticket drawer, command palette and shortcuts, My Tickets, Docs and Files, Admin. The 3b and 3c
-split is a working assumption, not a decision.
+- **Board**: one column per status in the board's flow, ticket cards (key, title, priority, assignee, labels,
+  points, due, blocked and overdue flags), filters by assignee, label and text (kept in the URL as `?a=`, `?l=`,
+  `?q=`), live updates from the event stream. Drag with the mouse, a long press on touch, or the keyboard:
+  Space to pick a card up, Left and Right to choose a column, Space to drop (Enter opens the ticket instead, and
+  Alt+Left/Right nudges a card one column). Moves are optimistic: if the server refuses (a Waterfall board will
+  not skip a phase) the card goes back and the server's message shows in an alert. dnd-kit's own keyboard step
+  is 25px, so `board-dnd.ts` supplies a column-to-column coordinate getter.
+- **Ticket drawer**: `?t=KEY` on any page (the short link `#/t/KEY` redirects to the ticket's board). Edits title,
+  description, status, priority, due date, assignee and QA owner (searchable pickers), sprint, points, appetite,
+  level, parent ticket, labels, blocked flag and reason, acceptance criteria and the definition of done; comments,
+  links (add and remove), attachments (upload and download), the GitHub panel on boards that have it, and delete
+  with a confirm step. The server keeps no per-ticket history, so "activity" is the comment thread (including
+  GitHub's) plus when the ticket was created and last moved.
+- **Command palette** (Ctrl/Cmd+K or `/`): jump to a page, project or board, find a ticket by key or title
+  (searched on the server, capped at 8), create a ticket (pick a board, type a title), switch theme, open the
+  shortcut list. Shortcuts: `C`, `?`, `G` then `B`/`S`/`R`, `J`/`K`, `Enter`, `E`, `A`.
+- **My Tickets**.
+
+Placeholders, labelled in the UI: Backlog, Epics, Retros and Standup tabs, and Docs and Files (3c). Not
+started: Admin (3c). The 3b and 3c split is a working assumption, not a decision.
+
+Assignee pickers: the server's user list is admin-only, so for everyone else the list is the signed-in person
+plus whoever already appears on the board's tickets; anyone else is added by typing their email.
 
 There is no "create project" screen because the server has no such endpoint: projects are declared in
 `projects.json`. The Projects page says so.
+
+## Accessibility
+
+`e2e/a11y.spec.ts` runs axe (WCAG 2.0/2.1 A and AA rules) over the board, the drawer, the palette, the open
+assignee picker, the shortcut list and My Tickets, in both themes, and expects zero violations. Automated rules
+find a fraction of real problems: the keyboard drag and the screen-reader announcements were exercised by hand
+and by test, not by an assistive technology.

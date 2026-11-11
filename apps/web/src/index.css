@@ -61,9 +61,9 @@
   --red-soft: rgba(207, 52, 44, 0.1);
   --amber-soft: rgba(176, 116, 8, 0.12);
   --green-soft: rgba(30, 140, 55, 0.12);
-  --c-red: #cf342c;
-  --c-green: #1f8d38;
-  --c-amber: #b07408;
+  --c-red: #c42e26;
+  --c-green: #197a30;
+  --c-amber: #8f5f00;
   --c-blue: #3a62e0;
   --c-cyan: #14899a;
   --p-medium: #b8861e;
@@ -102,6 +102,8 @@
   --animate-shimmer: shimmer 1.6s linear infinite;
   --animate-fade: fade 0.15s ease-out;
   --animate-slide: slide 0.18s ease-out;
+  --animate-slide-right: slide-right 0.18s ease-out;
+  --animate-pop: pop 0.12s ease-out;
 }
 
 @keyframes shimmer {
@@ -120,6 +122,19 @@
 @keyframes slide {
   from {
     transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-right {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+@keyframes pop {
+  from {
+    transform: translateY(-4px) scale(0.98);
     opacity: 0;
   }
 }

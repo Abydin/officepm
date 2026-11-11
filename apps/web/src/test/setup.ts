@@ -8,8 +8,17 @@ class IdleEventSource {
   close() {}
 }
 
+/** cmdk measures its list with ResizeObserver and scrolls the selected row into view; jsdom has neither. */
+class IdleResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 beforeEach(() => {
   vi.stubGlobal('EventSource', IdleEventSource);
+  vi.stubGlobal('ResizeObserver', IdleResizeObserver);
+  Element.prototype.scrollIntoView = () => {};
 });
 
 afterEach(() => {

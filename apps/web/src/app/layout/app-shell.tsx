@@ -2,13 +2,33 @@ import { useState } from 'react';
 import { Outlet } from 'react-router';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { useEventStream } from '@/features/events/use-event-stream';
+import { CommandPalette, type PalettePage } from '@/features/palette/command-palette';
+import { BoardSelectionProvider } from '@/features/shortcuts/board-selection';
+import { ShortcutsHelp } from '@/features/shortcuts/shortcuts-help';
+import { useShortcuts } from '@/features/shortcuts/use-shortcuts';
+import { TicketDrawerHost } from '@/features/tickets/ticket-drawer';
 import { SidebarNav } from './sidebar-nav';
 import { Topbar } from './topbar';
 
 /** Signed-in layout: top bar, project sidebar (a slide-in sheet on phones), and the routed page. */
 export function AppShell() {
+  return (
+    <BoardSelectionProvider>
+      <Shell />
+    </BoardSelectionProvider>
+  );
+}
+
+function Shell() {
   const [navOpen, setNavOpen] = useState(false);
+  const [palette, setPalette] = useState<PalettePage | null>(null);
+  const [help, setHelp] = useState(false);
   useEventStream();
+  useShortcuts({
+    openPalette: (page = 'root') => setPalette(page),
+    openHelp: () => setHelp(true),
+    paletteOpen: palette !== null,
+  });
 
   return (
     <div className="flex h-full flex-col">
@@ -23,7 +43,7 @@ export function AppShell() {
       >
         Skip to content
       </a>
-      <Topbar onOpenNav={() => setNavOpen(true)} />
+      <Topbar onOpenNav={() => setNavOpen(true)} onOpenPalette={() => setPalette('root')} />
       <div className="relative flex min-h-0 flex-1">
         <aside className="hidden w-54 shrink-0 overflow-y-auto border-r border-line bg-raised md:block">
           <SidebarNav />
@@ -45,6 +65,15 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <TicketDrawerHost />
+      {palette !== null && (
+        <CommandPalette
+          initialPage={palette}
+          onOpenChange={(open) => !open && setPalette(null)}
+          onOpenHelp={() => setHelp(true)}
+        />
+      )}
+      {help && <ShortcutsHelp onOpenChange={(open) => !open && setHelp(false)} />}
     </div>
   );
 }

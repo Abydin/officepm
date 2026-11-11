@@ -28,3 +28,25 @@ export function SheetContent({
     </DialogPrimitive.Portal>
   );
 }
+
+/** A full-height panel from the right edge, over the whole page, for the ticket drawer. */
+export function DrawerContent({
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof DialogPrimitive.Content>) {
+  return (
+    <DialogPrimitive.Portal>
+      <DialogPrimitive.Overlay className="fixed inset-0 z-40 animate-fade bg-black/45" />
+      <DialogPrimitive.Content
+        className={cn(
+          'fixed inset-y-0 right-0 z-50 flex w-[min(560px,100vw)] animate-slide-right flex-col border-l border-line bg-raised shadow-pop focus:outline-none',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  );
+}

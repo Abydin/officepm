@@ -40,6 +40,9 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       <Item to="/overview" onNavigate={onNavigate}>
         Overview
       </Item>
+      <Item to="/mine" onNavigate={onNavigate}>
+        My Tickets
+      </Item>
       <Item to="/projects" end onNavigate={onNavigate}>
         Projects
       </Item>

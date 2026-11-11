@@ -382,3 +382,14 @@ export const GithubHookResultSchema = z.object({
   matched: z.array(z.string()),
 });
 export type GithubHookResult = z.infer<typeof GithubHookResultSchema>;
+
+/** POST /api/tickets/:key/comments body. */
+export const CommentCreateSchema = z.object({ body: z.string().min(1) });
+export type CommentCreate = z.infer<typeof CommentCreateSchema>;
+
+/** POST /api/tickets/:key/links body. The server accepts http and https URLs only. */
+export const TicketLinkCreateSchema = z.object({
+  title: z.string().min(1),
+  url: z.string().min(1),
+});
+export type TicketLinkCreate = z.infer<typeof TicketLinkCreateSchema>;

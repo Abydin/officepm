@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, Menu, Moon, Sun } from 'lucide-react';
+import { LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import { Avatar } from '@/components/avatar';
 import { Logo } from '@/components/logo';
@@ -12,7 +12,13 @@ import { useTheme } from '@/lib/theme';
 const picker =
   'min-h-8 w-auto max-w-[40vw] min-w-0 cursor-pointer appearance-none truncate rounded-md border border-line-strong bg-field py-1 pr-7 pl-2.5 text-fg hover:border-dim md:max-w-60 md:min-w-[132px]';
 
-export function Topbar({ onOpenNav }: { onOpenNav: () => void }) {
+export function Topbar({
+  onOpenNav,
+  onOpenPalette,
+}: {
+  onOpenNav: () => void;
+  onOpenPalette: () => void;
+}) {
   const user = useUser();
   const navigate = useNavigate();
   const projects = useQuery(projectsQuery);
@@ -64,6 +70,19 @@ export function Topbar({ onOpenNav }: { onOpenNav: () => void }) {
         </svg>
       </div>
       <span className="flex-1" />
+      <button
+        type="button"
+        onClick={onOpenPalette}
+        aria-label="Search tickets and commands"
+        aria-keyshortcuts="Control+K Meta+K /"
+        className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md border border-line-strong bg-field px-2.5 text-dim hover:border-dim md:w-64"
+      >
+        <Search className="size-4 shrink-0" aria-hidden="true" />
+        <span className="hidden flex-1 text-left md:inline">Search tickets</span>
+        <kbd className="hidden rounded border border-line-strong px-1.5 font-mono text-[11px] md:inline">
+          /
+        </kbd>
+      </button>
       <Button
         variant="ghost"
         size="icon"

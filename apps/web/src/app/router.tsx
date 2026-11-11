@@ -1,10 +1,13 @@
 import { createHashRouter, createMemoryRouter, Navigate, type RouteObject } from 'react-router';
 import { LoginPage } from '@/features/auth/login-page';
+import { MyTicketsPage } from '@/features/mine/my-tickets-page';
 import { OverviewPage } from '@/features/overview/overview-page';
 import { BoardFrame } from '@/features/projects/board-frame';
-import { BoardView, ViewPlaceholder } from '@/features/projects/board-views';
+import { BoardView } from '@/features/projects/board-view';
+import { ViewPlaceholder } from '@/features/projects/board-views';
 import { ProjectPage } from '@/features/projects/project-page';
 import { ProjectsPage } from '@/features/projects/projects-page';
+import { TicketRedirect } from '@/features/tickets/ticket-redirect';
 import { RequireAuth } from './auth-gate';
 import { AppShell } from './layout/app-shell';
 import { RouteError } from './route-error';
@@ -25,6 +28,8 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <Navigate to="/overview" replace /> },
           { path: 'overview', element: <OverviewPage /> },
+          { path: 'mine', element: <MyTicketsPage /> },
+          { path: 't/:key', element: <TicketRedirect /> },
           { path: 'projects', element: <ProjectsPage /> },
           { path: 'projects/:slug', element: <ProjectPage /> },
           {

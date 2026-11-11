@@ -138,7 +138,8 @@ function DashboardBody({ data }: { data: Dashboard }) {
                 {data.needs_me.map((n) => (
                   <li key={n.key}>
                     <Link
-                      to={`/projects/${n.project_slug}/boards/${n.board_slug}`}
+                      to={`/projects/${n.project_slug}/boards/${n.board_slug}?t=${encodeURIComponent(n.key)}`}
+                      state={{ drawer: true }}
                       className="-mx-2 flex items-center gap-2 rounded-md px-2 py-2 text-fg no-underline hover:bg-hover"
                     >
                       <PriorityMark priority={n.priority} />

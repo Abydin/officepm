@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 export type Theme = 'dark' | 'light';
 
@@ -15,6 +15,10 @@ export function readTheme(): Theme {
   return 'dark';
 }
 
+// One shared value, so the top bar and the command palette always agree.
+let current: Theme = readTheme();
+const listeners = new Set<() => void>();
+
 export function applyTheme(theme: Theme): void {
   document.documentElement.setAttribute('data-theme', theme);
   try {
@@ -22,14 +26,17 @@ export function applyTheme(theme: Theme): void {
   } catch {
     // The theme still applies for this page view.
   }
+  current = theme;
+  for (const listener of listeners) listener();
 }
 
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+
 export function useTheme(): { theme: Theme; toggle: () => void } {
-  const [theme, setTheme] = useState<Theme>(readTheme);
-  const toggle = useCallback(() => {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark';
-    applyTheme(next);
-    setTheme(next);
-  }, [theme]);
+  const theme = useSyncExternalStore(subscribe, () => current);
+  const toggle = useCallback(() => applyTheme(current === 'dark' ? 'light' : 'dark'), []);
   return { theme, toggle };
 }

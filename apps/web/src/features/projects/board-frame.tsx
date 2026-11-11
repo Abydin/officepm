@@ -79,6 +79,7 @@ export function BoardFrame() {
 
       <form onSubmit={submit} className="mb-3 flex gap-2">
         <Input
+          id="quick-add"
           aria-label="New ticket title"
           placeholder="New ticket title, press Enter"
           value={title}

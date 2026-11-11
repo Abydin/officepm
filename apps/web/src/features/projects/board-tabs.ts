@@ -25,7 +25,7 @@ export function boardTabs(board: Pick<Board, 'flow' | 'agile'>): BoardTab[] {
     board.flow === 'shapeup' ? 'Cycles' : board.flow === 'waterfall' ? 'Phases' : 'Backlog';
 
   const tabs: BoardTab[] = [{ id: 'board', label: 'Board', path: '', phase: '3b' }];
-  if (timeboxed) tabs.push({ id: 'backlog', label: backlogLabel, path: 'backlog', phase: '3b' });
+  if (timeboxed) tabs.push({ id: 'backlog', label: backlogLabel, path: 'backlog', phase: '3c' });
   if (board.agile) tabs.push({ id: 'epics', label: 'Epics', path: 'epics', phase: '3c' });
   if (board.agile && flowSupports(board.flow, 'sprints'))
     tabs.push({ id: 'retros', label: 'Retros', path: 'retros', phase: '3c' });
