@@ -42,17 +42,19 @@ export function createAuthService(ctx: AppContext) {
         throw badRequest('email and password must be strings');
       }
       const address = email.toLowerCase().trim();
-      const wait = throttle.retryAfter(ip, address);
-      if (wait > 0) throw new TooManyAttempts(wait);
+      // Counts this attempt as a failure in the same synchronous step as the check, so a
+      // parallel burst cannot all pass before the first compare finishes. A right password
+      // refunds it below; anything else, a throw included, leaves it counted.
+      const attempt = throttle.begin(ip, address);
+      if (attempt.wait > 0) throw new TooManyAttempts(attempt.wait);
 
       const user = orm.select().from(users).where(eq(users.email, address)).get();
       // Async compare: bcrypt runs on the libuv pool, so the event loop keeps serving.
       const valid = await bcrypt.compare(password, user ? user.password : await decoy());
       if (!user || !valid) {
-        throttle.recordFailure(ip, address);
         throw new HttpError(401, 'invalid email or password');
       }
-      throttle.recordSuccess(address);
+      attempt.success();
       const sid = crypto.randomBytes(32).toString('hex');
       const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
       orm

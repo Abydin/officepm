@@ -15,7 +15,8 @@ import {
   ProjectsRegistry,
   seedBoards,
 } from './index.js';
-import { LoginThrottle } from './http/throttle.js';
+import { clientKey, LoginThrottle } from './http/throttle.js';
+import { createAuthService } from './modules/auth/service.js';
 import { MAX_JSON_BYTES, MAX_UPLOAD_REQUEST_BYTES } from './http/limits.js';
 import { inlineScriptHashes } from './http/security-headers.js';
 import { parseProjectsConfig } from './projects-config.js';
@@ -319,6 +320,105 @@ describe('login throttle', () => {
     expect((t as unknown as { failures: Map<string, unknown> }).failures.size).toBeLessThanOrEqual(
       51,
     );
+  });
+
+  describe('hardening of the throttle itself', () => {
+    const outcome = (p: Promise<unknown>) =>
+      p.then(
+        () => 200,
+        (e: { status?: number }) => e.status ?? 500,
+      );
+
+    it('does not admit a parallel burst past the cap while bcrypt is still running', async () => {
+      const h = await harness({
+        loginThrottle: new LoginThrottle({ perEmail: 3, perIp: 1000, perEmailGlobal: 1000 }),
+      });
+      const auth = createAuthService(h.ctx);
+      const body = { email: ADMIN.email, password: 'wrong' };
+      const results = await Promise.all(
+        Array.from({ length: 20 }, () => outcome(auth.login(body, '9.9.9.9'))),
+      );
+      expect(results.filter((s) => s === 401)).toHaveLength(3);
+      expect(results.filter((s) => s === 429)).toHaveLength(17);
+      fs.rmSync(h.dir, { recursive: true, force: true });
+    });
+
+    it('refunds an admitted attempt when the password turns out right', async () => {
+      const h = await harness({
+        loginThrottle: new LoginThrottle({ perEmail: 2, perIp: 2, perEmailGlobal: 1000 }),
+      });
+      const auth = createAuthService(h.ctx);
+      const good = { email: ADMIN.email, password: ADMIN.password };
+      const results = await Promise.all(
+        Array.from({ length: 6 }, () => outcome(auth.login(good, '9.9.9.9'))),
+      );
+      // Two are admitted at once; the rest are refused while those are in flight.
+      expect(results.filter((s) => s === 200)).toHaveLength(2);
+      // Both succeeded, so nothing is left counted: a later login is not blocked.
+      expect(await outcome(auth.login(good, '9.9.9.9'))).toBe(200);
+      fs.rmSync(h.dir, { recursive: true, force: true });
+    });
+
+    it('does not let one address lock an account out for everyone else', async () => {
+      const h = await harness({
+        loginThrottle: new LoginThrottle({ perEmail: 3, perIp: 1000, perEmailGlobal: 10 }),
+      });
+      const auth = createAuthService(h.ctx);
+      const bad = { email: ADMIN.email, password: 'wrong' };
+      // The attacker exhausts its own pair, then a spread of other addresses pushes the
+      // account past the global ceiling.
+      for (let i = 0; i < 3; i++) expect(await outcome(auth.login(bad, '6.6.6.6'))).toBe(401);
+      expect(await outcome(auth.login(bad, '6.6.6.6'))).toBe(429);
+      for (let i = 0; i < 12; i++) {
+        await outcome(auth.login(bad, `7.7.7.${i}`));
+      }
+      const good = { email: ADMIN.email, password: ADMIN.password };
+      expect(await outcome(auth.login(good, '203.0.113.5'))).toBe(200);
+      // A client with a failure of its own on that email is held while the flood lasts.
+      await outcome(auth.login(bad, '203.0.113.6'));
+      expect(await outcome(auth.login(good, '203.0.113.6'))).toBe(429);
+      fs.rmSync(h.dir, { recursive: true, force: true });
+    });
+
+    it('keeps a live block when a flood of fake keys fills the map', () => {
+      const t = new LoginThrottle({ maxKeys: 30, perEmail: 2, perIp: 1000, perEmailGlobal: 1000 });
+      t.begin('1.1.1.1', 'victim@x');
+      t.begin('1.1.1.1', 'victim@x');
+      expect(t.retryAfter('1.1.1.1', 'victim@x')).toBeGreaterThan(0);
+      let admitted = 0;
+      for (let i = 0; i < 200; i++) {
+        if (t.begin('10.0.0.' + (i % 250) + '.' + i, 'fake' + i).wait === 0) admitted++;
+      }
+      expect(admitted).toBeLessThan(200);
+      expect(
+        (t as unknown as { failures: Map<string, unknown> }).failures.size,
+      ).toBeLessThanOrEqual(30);
+      expect(t.retryAfter('1.1.1.1', 'victim@x')).toBeGreaterThan(0);
+    });
+
+    it('refuses an unknown key while the map is full of live ones, and admits again once they expire', () => {
+      let now = 5_000_000;
+      const t = new LoginThrottle({ maxKeys: 6, windowMs: 60_000, now: () => now });
+      expect(t.begin('1.1.1.1', 'a@x').wait).toBe(0);
+      expect(t.begin('2.2.2.2', 'b@x').wait).toBe(0);
+      const refused = t.begin('3.3.3.3', 'c@x');
+      expect(refused.wait).toBeGreaterThan(0);
+      now += 61_000;
+      expect(t.begin('3.3.3.3', 'c@x').wait).toBe(0);
+    });
+
+    it('keys IPv6 by its /64 and treats a mapped IPv4 as the IPv4', () => {
+      expect(clientKey('2001:db8:1:2::1')).toBe(clientKey('2001:DB8:1:2:ffff:0:0:9'));
+      expect(clientKey('2001:db8:1:2::1')).not.toBe(clientKey('2001:db8:1:3::1'));
+      expect(clientKey('::ffff:192.0.2.7')).toBe('192.0.2.7');
+      expect(clientKey('fe80::1%en0')).toBe(clientKey('fe80::2'));
+      expect(clientKey('unknown')).toBe('unknown');
+      const t = new LoginThrottle({ perIp: 2, perEmail: 1000, perEmailGlobal: 1000 });
+      t.recordFailure('2001:db8:1:2::1', 'a@x');
+      t.recordFailure('2001:db8:1:2::2', 'b@x');
+      expect(t.retryAfter('2001:db8:1:2:aaaa::3', 'c@x')).toBeGreaterThan(0);
+      expect(t.retryAfter('2001:db8:1:9::3', 'c@x')).toBe(0);
+    });
   });
 
   it('does not block the event loop while it checks passwords', async () => {

@@ -255,11 +255,16 @@ tailnet. It is not hardened for the public internet; do not port-forward it.
   proxy reports `X-Forwarded-Proto: https`. There is no self-signup; an admin
   creates every account. Resetting a password closes that user's event streams.
 - There is no separate CSRF token: writes rely on the `SameSite=Lax` cookie.
-- Failed logins are throttled per address (30) and per email (8) in a 15 minute
-  window, answered 429, before any password work. An unknown email costs one decoy
-  compare, so timing does not reveal which accounts exist. The state is in memory
-  and resets on restart. Anyone can lock a named account out for up to 15 minutes
-  by failing its login on purpose.
+- Failed logins are throttled in a 15 minute window: per address (30, IPv6 by its
+  /64), per address and email pair (8) and per email overall (100), answered 429
+  before any password work. Attempts are counted before the password check finishes,
+  so parallel guesses cannot beat the limit. Because the email limit is per pair,
+  one client cannot lock an account out for everyone else. Past 100 failures on an
+  email, only clients that have already failed on it are held; a client with a clean
+  record can still sign in. An unknown email costs one decoy compare, so timing does
+  not reveal which accounts exist. The state is in memory (10,000 keys, expired
+  entries only are dropped, new keys are refused when it is full of live ones) and
+  resets on restart. A guesser spread over many addresses is slowed, not stopped.
 - Request bodies are capped while they stream (2 MB, 25 MB for an upload). Every
   POST and PATCH body is validated against the shared schemas.
 - Every response carries a Content-Security-Policy (scripts only from the origin

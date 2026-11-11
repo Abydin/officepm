@@ -258,14 +258,33 @@ What changed.
 - Malformed JSON is a 400 ("request body is not valid JSON"), and a body that is JSON
   but not an object or array is a 400 ("request body must be a JSON object"). v1 answered
   500 for both. No conformance test covers either.
-- Login throttle (http/throttle.ts). Failures are counted per client address (30) and per
-  email (8) in a 15 minute window, checked before any bcrypt work, answered 429 with
-  Retry-After. A success clears that email. Only failures count, so normal use is never
-  blocked. State is in memory and bounded, and resets on restart. The address is the
-  socket's; behind a proxy set PM_TRUST_PROXY=1 to use the right-most X-Forwarded-For
-  entry (the one the proxy itself appended). Known trade-off: anyone can lock a named
-  account out for up to 15 minutes by failing its login on purpose. The compare was
-  already async bcrypt; a test now pins that the event loop keeps turning while it runs.
+- Login throttle (http/throttle.ts). Failures are counted in a 15 minute window under
+  three keys: the client address (30; an IPv6 address by its /64), the (address, email)
+  pair (8), and the email alone (100, the global ceiling). A block is answered 429 with
+  Retry-After, before any bcrypt work. Only failures count, so normal use is never blocked.
+  The email limit is keyed on the pair, so a stranger failing a named account's login
+  exhausts only its own pair and cannot lock the account out for everyone (the earlier
+  design could, for up to 15 minutes). The global ceiling only stops a client that already
+  has a failure of its own on that email, so a correct password from a client with no
+  failures of its own still gets in during a flood. It blocks such a client outright
+  rather than slowing it progressively, which is simpler and stricter.
+  The attempt is counted in the same synchronous step as the check, before the bcrypt
+  compare is awaited, and refunded when the password is right (which also clears that
+  pair's failures), so a parallel burst cannot all pass the check. If the lookup or compare
+  throws, the attempt stays counted. The map is capped at 10,000 keys. Only expired entries
+  are evicted; when it is full of live ones, a login for an unknown key is refused (fail
+  closed) rather than a live block forgotten. State is in memory and resets on restart.
+  The address is the socket's; behind a proxy set PM_TRUST_PROXY=1 to use the right-most
+  X-Forwarded-For entry (the one the proxy itself appended).
+  Known limits: (a) an attacker spread over many addresses gets 8 guesses per address and
+  per 15 minutes, and 100 per email in total before the global ceiling bites clients that
+  have failed; this slows guessing, it does not stop a botnet. (b) Filling the map with
+  live keys (about 3,300 attempts with distinct addresses and emails inside the window)
+  makes logins for new, clean clients wait until entries expire, while known clients and
+  existing blocks are unaffected. (c) During a flood past 100 failures, a legitimate user
+  who has mistyped once is held until it ages out. (d) One /64 shares an address budget,
+  so users behind one IPv6 subscriber prefix share the 30 failures. The compare was
+  already async bcrypt; a test pins that the event loop keeps turning while it runs.
   An unknown email now costs one decoy bcrypt compare, so timing does not reveal which
   emails exist. Non-string credentials are a 400 (they used to throw inside bcrypt).
 - Event streams are closed when their user's password is reset, and when their session
