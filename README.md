@@ -255,16 +255,23 @@ tailnet. It is not hardened for the public internet; do not port-forward it.
   proxy reports `X-Forwarded-Proto: https`. There is no self-signup; an admin
   creates every account. Resetting a password closes that user's event streams.
 - There is no separate CSRF token: writes rely on the `SameSite=Lax` cookie.
-- Failed logins are throttled in a 15 minute window: per address (30, IPv6 by its
-  /64), per address and email pair (8) and per email overall (100), answered 429
-  before any password work. Attempts are counted before the password check finishes,
-  so parallel guesses cannot beat the limit. Because the email limit is per pair,
-  one client cannot lock an account out for everyone else. Past 100 failures on an
-  email, only clients that have already failed on it are held; a client with a clean
-  record can still sign in. An unknown email costs one decoy compare, so timing does
-  not reveal which accounts exist. The state is in memory (10,000 keys, expired
-  entries only are dropped, new keys are refused when it is full of live ones) and
-  resets on restart. A guesser spread over many addresses is slowed, not stopped.
+- Failed logins are throttled in a 15 minute window, answered 429 before any password
+  work: per full client address (30; an IPv6 address by all its groups, link-local with
+  its zone id), per IPv6 /64 (150, so two addresses of one subscriber do not share the
+  strict budget but a client rotating through a /64 is still capped), per address and
+  email pair (8) and per email overall (100). Attempts are counted before the password
+  check finishes, so parallel guesses cannot beat the limit. Because the email limit is
+  per pair, one client cannot lock an account out for everyone else. Past 100 failures
+  on an email, a client that has already failed on it is held, and a new address is let
+  through at one per 2 seconds. An email with no account counts against the address
+  only, and an unknown email costs one decoy compare, so timing does not reveal which
+  accounts exist. The state is in memory (four maps of 10,000 keys, expired entries
+  dropped first, a new address refused when its map is full of live ones) and resets on
+  restart. Limits: a guesser spread over many addresses is slowed, not stopped; the
+  thresholds are untuned guesses; an address that fails 8 times on one email is blocked
+  only if that email has an account, which a patient attacker can detect; and behind a
+  reverse proxy you must set `PM_TRUST_PROXY=1`, or every client shares the proxy's
+  address.
 - Request bodies are capped while they stream (2 MB, 25 MB for an upload). Every
   POST and PATCH body is validated against the shared schemas.
 - Every response carries a Content-Security-Policy (scripts only from the origin

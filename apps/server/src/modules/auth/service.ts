@@ -45,10 +45,12 @@ export function createAuthService(ctx: AppContext) {
       // Counts this attempt as a failure in the same synchronous step as the check, so a
       // parallel burst cannot all pass before the first compare finishes. A right password
       // refunds it below; anything else, a throw included, leaves it counted.
-      const attempt = throttle.begin(ip, address);
+      // The lookup is synchronous, so it cannot let a burst through; it tells the throttle
+      // whether the email has an account, so made-up emails never create per-email state.
+      const user = orm.select().from(users).where(eq(users.email, address)).get();
+      const attempt = throttle.begin(ip, address, !!user);
       if (attempt.wait > 0) throw new TooManyAttempts(attempt.wait);
 
-      const user = orm.select().from(users).where(eq(users.email, address)).get();
       // Async compare: bcrypt runs on the libuv pool, so the event loop keeps serving.
       const valid = await bcrypt.compare(password, user ? user.password : await decoy());
       if (!user || !valid) {

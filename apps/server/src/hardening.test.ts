@@ -15,7 +15,7 @@ import {
   ProjectsRegistry,
   seedBoards,
 } from './index.js';
-import { clientKey, LoginThrottle } from './http/throttle.js';
+import { clientKey, LoginThrottle, networkKey } from './http/throttle.js';
 import { createAuthService } from './modules/auth/service.js';
 import { MAX_JSON_BYTES, MAX_UPLOAD_REQUEST_BYTES } from './http/limits.js';
 import { inlineScriptHashes } from './http/security-headers.js';
@@ -317,9 +317,8 @@ describe('login throttle', () => {
   it('keeps its memory bounded', () => {
     const t = new LoginThrottle({ maxKeys: 50, perEmail: 1000, perIp: 1000 });
     for (let i = 0; i < 500; i++) t.recordFailure('ip' + i, 'e' + i);
-    expect((t as unknown as { failures: Map<string, unknown> }).failures.size).toBeLessThanOrEqual(
-      51,
-    );
+    const sizes = t.sizes();
+    for (const n of [sizes.ip, sizes.pair, sizes.email]) expect(n).toBeLessThanOrEqual(50);
   });
 
   describe('hardening of the throttle itself', () => {
@@ -360,8 +359,15 @@ describe('login throttle', () => {
     });
 
     it('does not let one address lock an account out for everyone else', async () => {
+      let now = 1_000_000;
       const h = await harness({
-        loginThrottle: new LoginThrottle({ perEmail: 3, perIp: 1000, perEmailGlobal: 10 }),
+        loginThrottle: new LoginThrottle({
+          perEmail: 3,
+          perIp: 1000,
+          perEmailGlobal: 10,
+          slowdownMs: 2000,
+          now: () => now,
+        }),
       });
       const auth = createAuthService(h.ctx);
       const bad = { email: ADMIN.email, password: 'wrong' };
@@ -373,9 +379,14 @@ describe('login throttle', () => {
         await outcome(auth.login(bad, `7.7.7.${i}`));
       }
       const good = { email: ADMIN.email, password: ADMIN.password };
+      // Past the ceiling a clean client is slowed, not stopped: it gets in once the gap passes.
+      expect(await outcome(auth.login(good, '203.0.113.5'))).toBe(429);
+      now += 3000;
       expect(await outcome(auth.login(good, '203.0.113.5'))).toBe(200);
       // A client with a failure of its own on that email is held while the flood lasts.
+      now += 3000;
       await outcome(auth.login(bad, '203.0.113.6'));
+      now += 3000;
       expect(await outcome(auth.login(good, '203.0.113.6'))).toBe(429);
       fs.rmSync(h.dir, { recursive: true, force: true });
     });
@@ -390,15 +401,13 @@ describe('login throttle', () => {
         if (t.begin('10.0.0.' + (i % 250) + '.' + i, 'fake' + i).wait === 0) admitted++;
       }
       expect(admitted).toBeLessThan(200);
-      expect(
-        (t as unknown as { failures: Map<string, unknown> }).failures.size,
-      ).toBeLessThanOrEqual(30);
+      expect(t.sizes().ip).toBeLessThanOrEqual(30);
       expect(t.retryAfter('1.1.1.1', 'victim@x')).toBeGreaterThan(0);
     });
 
     it('refuses an unknown key while the map is full of live ones, and admits again once they expire', () => {
       let now = 5_000_000;
-      const t = new LoginThrottle({ maxKeys: 6, windowMs: 60_000, now: () => now });
+      const t = new LoginThrottle({ maxKeys: 2, windowMs: 60_000, now: () => now });
       expect(t.begin('1.1.1.1', 'a@x').wait).toBe(0);
       expect(t.begin('2.2.2.2', 'b@x').wait).toBe(0);
       const refused = t.begin('3.3.3.3', 'c@x');
@@ -407,17 +416,105 @@ describe('login throttle', () => {
       expect(t.begin('3.3.3.3', 'c@x').wait).toBe(0);
     });
 
-    it('keys IPv6 by its /64 and treats a mapped IPv4 as the IPv4', () => {
-      expect(clientKey('2001:db8:1:2::1')).toBe(clientKey('2001:DB8:1:2:ffff:0:0:9'));
-      expect(clientKey('2001:db8:1:2::1')).not.toBe(clientKey('2001:db8:1:3::1'));
+    it('keys IPv6 by the full address, keeps a zone id, and treats a mapped IPv4 as the IPv4', () => {
+      expect(clientKey('2001:db8:1:2::1')).toBe(clientKey('2001:DB8:1:2:0:0:0:1'));
+      expect(clientKey('2001:db8:1:2::1')).not.toBe(clientKey('2001:db8:1:2::2'));
       expect(clientKey('::ffff:192.0.2.7')).toBe('192.0.2.7');
-      expect(clientKey('fe80::1%en0')).toBe(clientKey('fe80::2'));
+      expect(networkKey('::ffff:192.0.2.7')).toBeUndefined();
+      expect(networkKey('192.0.2.7')).toBeUndefined();
+      expect(clientKey('fe80::1%en0')).not.toBe(clientKey('fe80::1%en1'));
+      expect(networkKey('fe80::1%en0')).toBe(networkKey('fe80::2%en1'));
+      expect(networkKey('2001:db8:1:2::1')).toBe(networkKey('2001:DB8:1:2:ffff:0:0:9'));
+      expect(networkKey('2001:db8:1:2::1')).not.toBe(networkKey('2001:db8:1:3::1'));
       expect(clientKey('unknown')).toBe('unknown');
-      const t = new LoginThrottle({ perIp: 2, perEmail: 1000, perEmailGlobal: 1000 });
-      t.recordFailure('2001:db8:1:2::1', 'a@x');
-      t.recordFailure('2001:db8:1:2::2', 'b@x');
-      expect(t.retryAfter('2001:db8:1:2:aaaa::3', 'c@x')).toBeGreaterThan(0);
-      expect(t.retryAfter('2001:db8:1:9::3', 'c@x')).toBe(0);
+    });
+
+    it('does not make two addresses in one /64 share the strict budget, but caps the /64', () => {
+      const t = new LoginThrottle({
+        perIp: 2,
+        perNet: 5,
+        perEmail: 1000,
+        perEmailGlobal: 1000,
+      });
+      const a = '2001:db8:1:2::1';
+      const b = '2001:db8:1:2::2';
+      const c = '2001:db8:1:2::3';
+      t.recordFailure(a, 'x@x');
+      t.recordFailure(a, 'x@x');
+      // a spent its own budget; b, in the same /64, still has a fresh one.
+      expect(t.retryAfter(a, 'x@x')).toBeGreaterThan(0);
+      expect(t.retryAfter(b, 'x@x')).toBe(0);
+      t.recordFailure(b, 'x@x');
+      t.recordFailure(b, 'x@x');
+      t.recordFailure(c, 'x@x');
+      // Five failures across the /64: a fresh address in it is now stopped by the aggregate.
+      expect(t.retryAfter('2001:db8:1:2::4', 'x@x')).toBeGreaterThan(0);
+      // Another /64 is unaffected.
+      expect(t.retryAfter('2001:db8:1:9::4', 'x@x')).toBe(0);
+    });
+
+    it('lets a flood of one key type fill its own map without refusing the others', () => {
+      const t = new LoginThrottle({
+        maxKeys: 3,
+        perIp: 1000,
+        perEmail: 2,
+        perEmailGlobal: 1000,
+      });
+      // One address fails against more accounts than the pair and email maps hold.
+      for (let i = 0; i < 8; i++) expect(t.begin('1.1.1.1', `acct${i}@x`).wait).toBe(0);
+      expect(t.sizes()).toMatchObject({ ip: 1, pair: 3, email: 3 });
+      // A client that is under its own address limit is still admitted, new address included.
+      expect(t.begin('1.1.1.1', 'late@x').wait).toBe(0);
+      expect(t.begin('2.2.2.2', 'late@x').wait).toBe(0);
+      // A blocked pair that was tracked stays blocked.
+      expect(t.retryAfter('1.1.1.1', 'acct0@x')).toBe(0);
+      t.begin('1.1.1.1', 'acct0@x');
+      expect(t.retryAfter('1.1.1.1', 'acct0@x')).toBeGreaterThan(0);
+    });
+
+    it('fails closed only for a new address when the address map is full', () => {
+      const t = new LoginThrottle({ maxKeys: 2, perIp: 5, perEmail: 1000, perEmailGlobal: 1000 });
+      expect(t.begin('1.1.1.1', 'a@x').wait).toBe(0);
+      expect(t.begin('2.2.2.2', 'a@x').wait).toBe(0);
+      expect(t.begin('3.3.3.3', 'a@x').wait).toBeGreaterThan(0);
+      // The addresses already tracked, under their limit, are still admitted.
+      expect(t.begin('1.1.1.1', 'b@x').wait).toBe(0);
+    });
+
+    it('does not fill the pair or email maps with emails that have no account', async () => {
+      const t = new LoginThrottle({ perIp: 100_000, perEmail: 1000, perEmailGlobal: 100_000 });
+      const h = await harness({ loginThrottle: t });
+      const auth = createAuthService(h.ctx);
+      const results = await Promise.all(
+        Array.from({ length: 60 }, (_, i) =>
+          outcome(auth.login({ email: `ghost${i}@x.test`, password: 'x' }, '8.8.8.8')),
+        ),
+      );
+      expect(results.every((r) => r === 401)).toBe(true);
+      // Every miss still counts against the address, and nothing else.
+      expect(t.sizes()).toEqual({ ip: 1, net: 0, pair: 0, email: 0 });
+      expect(t.retryAfter('8.8.8.8', 'other@x.test')).toBe(0);
+      fs.rmSync(h.dir, { recursive: true, force: true });
+    });
+
+    it('slows new addresses once an email passes the ceiling instead of passing them through', () => {
+      let now = 9_000_000;
+      const t = new LoginThrottle({
+        perIp: 1000,
+        perEmail: 1000,
+        perEmailGlobal: 3,
+        slowdownMs: 5000,
+        now: () => now,
+      });
+      for (let i = 0; i < 3; i++) expect(t.begin(`7.7.7.${i}`, 'v@x').wait).toBe(0);
+      // Ceiling reached: a new address is held until slowdownMs after the last failure.
+      expect(t.begin('7.7.7.50', 'v@x').wait).toBe(5);
+      now += 5000;
+      expect(t.begin('7.7.7.50', 'v@x').wait).toBe(0);
+      // One in, the next new address waits again: a reduced rate, not a free pass.
+      expect(t.begin('7.7.7.51', 'v@x').wait).toBeGreaterThan(0);
+      // Another email is not slowed.
+      expect(t.begin('7.7.7.51', 'other@x').wait).toBe(0);
     });
   });
 

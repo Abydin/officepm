@@ -258,35 +258,45 @@ What changed.
 - Malformed JSON is a 400 ("request body is not valid JSON"), and a body that is JSON
   but not an object or array is a 400 ("request body must be a JSON object"). v1 answered
   500 for both. No conformance test covers either.
-- Login throttle (http/throttle.ts). Failures are counted in a 15 minute window under
-  three keys: the client address (30; an IPv6 address by its /64), the (address, email)
-  pair (8), and the email alone (100, the global ceiling). A block is answered 429 with
-  Retry-After, before any bcrypt work. Only failures count, so normal use is never blocked.
+- Login throttle (http/throttle.ts). Failures are counted in a 15 minute window, each key
+  in its own map of 10,000 entries so a flood of one kind cannot crowd out the others:
+  the full client address (30; an IPv6 address keeps all eight groups, and a link-local
+  one its zone id), the IPv6 /64 (150, a separate aggregate, so two addresses in one /64
+  do not share the strict budget but a client rotating through the /64 is still capped),
+  the (address, email) pair (8), and the email alone (100, the global ceiling). IPv4-mapped
+  IPv6 is IPv4. A block is answered 429 with Retry-After, before any bcrypt work. Only
+  failures count, so normal use is never blocked.
   The email limit is keyed on the pair, so a stranger failing a named account's login
-  exhausts only its own pair and cannot lock the account out for everyone (the earlier
-  design could, for up to 15 minutes). The global ceiling only stops a client that already
-  has a failure of its own on that email, so a correct password from a client with no
-  failures of its own still gets in during a flood. It blocks such a client outright
-  rather than slowing it progressively, which is simpler and stricter.
-  The attempt is counted in the same synchronous step as the check, before the bcrypt
-  compare is awaited, and refunded when the password is right (which also clears that
-  pair's failures), so a parallel burst cannot all pass the check. If the lookup or compare
-  throws, the attempt stays counted. The map is capped at 10,000 keys. Only expired entries
-  are evicted; when it is full of live ones, a login for an unknown key is refused (fail
-  closed) rather than a live block forgotten. State is in memory and resets on restart.
-  The address is the socket's; behind a proxy set PM_TRUST_PROXY=1 to use the right-most
-  X-Forwarded-For entry (the one the proxy itself appended).
-  Known limits: (a) an attacker spread over many addresses gets 8 guesses per address and
-  per 15 minutes, and 100 per email in total before the global ceiling bites clients that
-  have failed; this slows guessing, it does not stop a botnet. (b) Filling the map with
-  live keys (about 3,300 attempts with distinct addresses and emails inside the window)
-  makes logins for new, clean clients wait until entries expire, while known clients and
-  existing blocks are unaffected. (c) During a flood past 100 failures, a legitimate user
-  who has mistyped once is held until it ages out. (d) One /64 shares an address budget,
-  so users behind one IPv6 subscriber prefix share the 30 failures. The compare was
-  already async bcrypt; a test pins that the event loop keeps turning while it runs.
-  An unknown email now costs one decoy bcrypt compare, so timing does not reveal which
-  emails exist. Non-string credentials are a 400 (they used to throw inside bcrypt).
+  exhausts only its own pair and cannot lock the account out for everyone. The global
+  ceiling holds a client that already has a failure of its own on that email; a client
+  with none is admitted at a reduced rate (one new address per slowdownMs, 2 s), derived
+  from the email's last failure so it needs no extra state. A clean client is therefore
+  slowed during a flood, not stopped.
+  The auth service looks the user up first (synchronous) and tells the throttle whether the
+  email has an account. An unknown email counts against the address only and never creates
+  pair or email entries, so a flood of made-up emails cannot fill those maps; it still costs
+  the decoy compare and the per-address failure.
+  Full maps. Expired entries are swept first (at most once a second). If the address map is
+  still full, a NEW address is refused (fail closed) and tracked addresses are unaffected.
+  If the /64, pair or email map is full, only that new key goes untracked: the client is
+  still bounded by its own address limit, so a flood of one type cannot refuse the others.
+  The attempt is counted in the same synchronous step as the check, before the bcrypt compare
+  is awaited, and refunded when the password is right (which also clears that pair's
+  failures), so a parallel burst cannot all pass the check. If the compare throws, the
+  attempt stays counted. State is in memory and resets on restart. The address is the
+  socket's; behind a proxy set PM_TRUST_PROXY=1 to use the right-most X-Forwarded-For
+  entry (the one the proxy itself appended).
+  Remaining limits, stated plainly. (a) A distributed guesser is slowed, not stopped:
+  8 guesses per address per 15 minutes, 100 per email before the slowdown starts, then
+  about one new address per 2 s. (b) The thresholds (30, 150, 8, 100, 2 s) are untuned
+  guesses, not measured against real use. (c) Behind a reverse proxy without PM_TRUST_PROXY
+  every client shares one address and the per-address limit becomes a global one. (d) With a
+  full pair or email map a client is bounded only by its address limit (30, not 8). (e) An
+  unknown email never gets a pair block, so repeated 401 against one email versus a 429
+  after 8 can tell a patient attacker that an account exists; the decoy compare hides
+  timing, not this. (f) During a flood past the ceiling, a legitimate user who has mistyped
+  once is held until it ages out. The compare was already async bcrypt; a test pins that
+  the event loop keeps turning while it runs. Non-string credentials are a 400.
 - Event streams are closed when their user's password is reset, and when their session
   logs out (EventBus.closeForUser and closeForSession). Not done: closing a stream when
   its session merely expires, which is checked only when the stream opens.
@@ -371,6 +381,9 @@ Server.
 
 - Rate limiting on routes other than login. Login is throttled; nothing else is, which is
   fine for a tailnet-only office tool and worth revisiting if it is ever exposed.
+- Login throttle tuning. The thresholds are untuned, a distributed guesser is only slowed,
+  and an unknown email never earns a pair block (see the Phase 4 notes). Tune against real
+  traffic.
 - The v1 quirks still kept on purpose: sprints on kanban and scrumban boards, three
   shapes of user, DELETE of a missing sprint, doc, file or link answering 200, and a
   webhook's raw url quoted in the system comment.
