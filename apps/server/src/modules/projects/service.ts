@@ -1,8 +1,14 @@
 import { and, eq } from 'drizzle-orm';
-import type { Board, BoardSettings, Project } from '@officepm/shared';
+import {
+  SettingsPatchRequestSchema,
+  type Board,
+  type BoardSettings,
+  type Project,
+} from '@officepm/shared';
 import type { AppContext, JsonBody } from '../../context.js';
 import { schema } from '../../db/index.js';
 import { notFound } from '../../http/errors.js';
+import { requireShape } from '../../http/validate.js';
 import type { BoardConfig, ProjectConfig } from '../../projects-config.js';
 
 export function publicBoard(board: BoardConfig): Board {
@@ -76,6 +82,7 @@ export function createProjectService(ctx: AppContext) {
       requireBoard(slug, boardSlug);
       const existing = orm.select().from(boardSettings).where(settingsWhere(slug, boardSlug)).get();
       if (!existing) throw notFound('board settings not found');
+      requireShape(SettingsPatchRequestSchema, body);
       orm
         .update(boardSettings)
         .set({

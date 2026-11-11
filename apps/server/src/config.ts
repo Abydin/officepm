@@ -13,6 +13,11 @@ export interface Config {
   /** Shared secret for the CI webhooks. Empty means the webhooks are disabled. */
   pmToken: string;
   nodeEnv: string;
+  /**
+   * Trust X-Forwarded-For for the client address (PM_TRUST_PROXY=1). Only safe
+   * behind a proxy that sets it, such as the Tailscale or Caddy setup in ROLLOUT.md.
+   */
+  trustProxy: boolean;
   adminEmail: string;
   adminPassword: string;
   /** True when no ADMIN_PASSWORD was set, so one was generated and must be printed once. */
@@ -25,7 +30,7 @@ const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 /**
  * Reads the same environment variables v1 does, with the same defaults:
  * PORT, PM_DATA_DIR, PM_PROJECTS_FILE, PM_TOKEN, NODE_ENV, ADMIN_EMAIL and
- * ADMIN_PASSWORD. PM_DATA_DIR defaults to the repo root, where v1 kept pm.db.
+ * ADMIN_PASSWORD, plus the v2-only PM_WEB_DIR and PM_TRUST_PROXY. PM_DATA_DIR defaults to the repo root, where v1 kept pm.db.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const dataDir = env.PM_DATA_DIR ? path.resolve(env.PM_DATA_DIR) : path.resolve(REPO_ROOT);
@@ -40,6 +45,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     webDir: env.PM_WEB_DIR ? path.resolve(env.PM_WEB_DIR) : path.join(REPO_ROOT, 'legacy'),
     pmToken: env.PM_TOKEN || '',
     nodeEnv: env.NODE_ENV || 'development',
+    trustProxy: env.PM_TRUST_PROXY === '1' || env.PM_TRUST_PROXY === 'true',
     adminEmail: env.ADMIN_EMAIL || 'admin@officepm.local',
     adminPassword: env.ADMIN_PASSWORD || crypto.randomBytes(12).toString('base64url'),
     adminPasswordGenerated,

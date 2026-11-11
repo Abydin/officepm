@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { demoUser, renderApp, stubApi } from '@/test/helpers';
@@ -74,7 +74,10 @@ describe('sprint picker in the top bar', () => {
     // The active sprint is the one it rests on.
     expect(picker).toHaveValue('s14');
     await user.selectOptions(picker, 's13');
-    expect(router.state.location.pathname).toBe('/projects/food/boards/eng/backlog');
+    // The backlog screen loads lazily, and a navigation commits once it has.
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/projects/food/boards/eng/backlog'),
+    );
   });
 
   it('is not there on a page that is not a board', async () => {

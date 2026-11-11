@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import type { AppContext, AppEnv } from './context.js';
 import { HttpError } from './http/errors.js';
 import { jsonBody } from './http/body.js';
+import { bodyLimit } from './http/limits.js';
+import { buildCsp, readIndexHtml, securityHeaders } from './http/security-headers.js';
 import { attachmentRoutes } from './modules/attachments/routes.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { commentRoutes } from './modules/comments/routes.js';
@@ -22,6 +24,8 @@ export function createApp(ctx: AppContext): Hono<AppEnv> {
   // strict: false, so /api/me/ matches like it did under Express.
   const app = new Hono<AppEnv>({ strict: false });
 
+  // First, so that every response, errors and 413s included, carries the headers.
+  app.use('*', securityHeaders(buildCsp(readIndexHtml(ctx.config.webDir))));
   // Express labelled JSON "application/json; charset=utf-8"; keep that header exactly.
   app.use('*', async (c, next) => {
     await next();
@@ -29,6 +33,7 @@ export function createApp(ctx: AppContext): Hono<AppEnv> {
       c.res.headers.set('content-type', 'application/json; charset=utf-8');
     }
   });
+  app.use('*', bodyLimit);
   app.use('*', jsonBody);
   // Any write may change the dashboard, so it never serves a result older than the last write.
   app.use('*', async (c, next) => {

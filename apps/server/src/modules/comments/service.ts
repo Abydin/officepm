@@ -1,8 +1,9 @@
 import { asc, eq } from 'drizzle-orm';
-import type { Comment } from '@officepm/shared';
+import { CommentRequestSchema, type Comment } from '@officepm/shared';
 import type { AppContext, JsonBody, SessionUser } from '../../context.js';
 import { schema } from '../../db/index.js';
 import { badRequest, notFound } from '../../http/errors.js';
+import { requireShape } from '../../http/validate.js';
 
 export function createCommentService(ctx: AppContext) {
   const { orm } = ctx.db;
@@ -37,6 +38,7 @@ export function createCommentService(ctx: AppContext) {
         throw notFound('ticket not found');
       }
       if (!b.body) throw badRequest('body required');
+      requireShape(CommentRequestSchema, b);
       return insert(ticketKey, user.name, b.body as string, 'user');
     },
 

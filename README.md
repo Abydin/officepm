@@ -13,7 +13,15 @@ tickets on PR open, deploy and release, so engineering status updates itself.
 > original v1 kept untouched in `legacy/`. The v2 server passes the same 104 conformance tests as v1 and opens v1's
 > `pm.db` as it is. The v2 web client now has every v1 screen (board, ticket drawer, backlog and sprints, epics,
 > retros, standup, docs and files, admin, overview, My Tickets), with end-to-end and accessibility tests. What is
-> left is hardening, packaging and cutover: see `docs/ARCHITECTURE-PLAN.md` and `apps/web/README.md`.
+> left is packaging and cutover: see `docs/ARCHITECTURE-PLAN.md` and `apps/web/README.md`.
+>
+> **Phase 4 hardening (v2 server):** request bodies are capped while they stream (413 over 2 MB, or 25 MB for an
+> upload), malformed JSON is a 400, failed logins are throttled per address and per email (429), event streams close
+> when a password is reset, every response carries a Content-Security-Policy and the other defensive headers, every
+> POST and PATCH body is type-checked against the shared Zod schemas with v1's messages kept, CI webhooks obey the
+> same Waterfall transition rule as a person, and `pnpm run backup` takes a consistent SQLite snapshot. Not done, and
+> why, is in the Phase 4 notes. Behind a reverse proxy set `PM_TRUST_PROXY=1` so the login throttle sees the real
+> client address.
 > The rest of this file describes v1, whose code is in `legacy/`.
 
 ![Board](docs/board.png)
@@ -174,11 +182,9 @@ remotely over Tailscale with nothing exposed to the public internet, wiring up
 GitHub Actions safely, nightly backups, and a plain-language guide for everyone
 else in the office.
 
-Backups are one command:
-
-```bash
-tar czf pm-backup-$(date +%F).tar.gz pm.db projects.json uploads/
-```
+Backups are one command. On v1: `tar czf pm-backup-$(date +%F).tar.gz pm.db projects.json uploads/`. On the v2
+server use `pnpm run backup [dir]` instead: it copies the database with SQLite's backup API, which is safe while the
+server is writing (a tar of a live WAL database can be torn), and writes the same `pm-backup-DATE.tar.gz` layout.
 
 ## What this deliberately is not
 

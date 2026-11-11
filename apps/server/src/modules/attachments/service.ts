@@ -1,11 +1,19 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { and, desc, eq, sql } from 'drizzle-orm';
-import type { Doc, ProjectFile, TicketFile, TicketLink } from '@officepm/shared';
+import {
+  DocRequestSchema,
+  LinkRequestSchema,
+  type Doc,
+  type ProjectFile,
+  type TicketFile,
+  type TicketLink,
+} from '@officepm/shared';
 import type { Context } from 'hono';
 import type { AppContext, JsonBody, SessionUser } from '../../context.js';
 import { resolveStoredPath, schema } from '../../db/index.js';
 import { badRequest, notFound } from '../../http/errors.js';
+import { requireShape } from '../../http/validate.js';
 import { unlinkQuietly } from '../../lib/files.js';
 import { isSafeUrl } from '../../lib/urls.js';
 import {
@@ -73,6 +81,7 @@ export function createAttachmentService(ctx: AppContext) {
     createDoc(slug: string, b: JsonBody, user: SessionUser): Doc {
       if (!b.title || !b.kind) throw badRequest('title and kind required');
       if (b.url && !isSafeUrl(b.url)) throw badRequest('url must be http: or https:');
+      requireShape(DocRequestSchema, b);
       return orm
         .insert(projectDocs)
         .values({
@@ -157,6 +166,7 @@ export function createAttachmentService(ctx: AppContext) {
     createLink(key: string, b: JsonBody, user: SessionUser): TicketLink {
       if (!b.title || !b.url) throw badRequest('title and url required');
       if (!isSafeUrl(b.url)) throw badRequest('url must be http: or https:');
+      requireShape(LinkRequestSchema, b);
       return orm
         .insert(ticketLinks)
         .values({

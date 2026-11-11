@@ -3,6 +3,8 @@ import { and, desc, eq, ne } from 'drizzle-orm';
 import {
   ALLOWED_SPRINT_KINDS,
   DEFAULT_SPRINT_DAYS,
+  SprintCreateRequestSchema,
+  SprintPatchRequestSchema,
   type Burndown,
   type BoardVelocity,
   type Sprint,
@@ -11,6 +13,7 @@ import {
 import type { AppContext, JsonBody } from '../../context.js';
 import { schema } from '../../db/index.js';
 import { badRequest, conflict, notFound } from '../../http/errors.js';
+import { requireShape } from '../../http/validate.js';
 import { addDaysIso, DAY_MS, todayIso } from '../../lib/dates.js';
 
 type SprintRow = typeof schema.sprints.$inferSelect;
@@ -100,6 +103,7 @@ export function createSprintService(ctx: AppContext) {
       const found = projects.findBoard(project, board);
       if (!found) throw badRequest('unknown project/board');
       if (!b.name) throw badRequest('name required');
+      requireShape(SprintCreateRequestSchema, b);
       // The default kind follows the flow, but an explicit one is honoured so a
       // Shape Up board can create its cooldown (6.10).
       const allowed = ALLOWED_SPRINT_KINDS[found.board.flow];
@@ -140,6 +144,7 @@ export function createSprintService(ctx: AppContext) {
     patch(id: string, b: JsonBody): Sprint {
       const existing = byId(id);
       if (!existing) throw notFound('sprint not found');
+      requireShape(SprintPatchRequestSchema, b);
       if (b.status === 'active' && existing.status !== 'active') {
         const already = orm
           .select({ id: sprints.id })

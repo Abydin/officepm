@@ -379,7 +379,10 @@ export type Dashboard = z.infer<typeof DashboardSchema>;
 /** Result of the three POST /api/github/* hooks. */
 export const GithubHookResultSchema = z.object({
   ok: z.literal(true),
+  /** Tickets that were moved. */
   matched: z.array(z.string()),
+  /** Present only when a move was refused by the board's flow rules (waterfall). */
+  skipped: z.array(z.object({ key: z.string(), reason: z.string() })).optional(),
 });
 export type GithubHookResult = z.infer<typeof GithubHookResultSchema>;
 

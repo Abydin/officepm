@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { AppContext, AppEnv } from '../../context.js';
 
 const TYPES: Record<string, string> = {
@@ -17,7 +17,7 @@ const TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-function fileResponse(file: string): Response | null {
+function fileResponse(file: string, cacheControl = 'public, max-age=0'): Response | null {
   try {
     const stat = fs.statSync(file);
     if (!stat.isFile()) return null;
@@ -25,7 +25,7 @@ function fileResponse(file: string): Response | null {
       headers: {
         'content-type': TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
         'content-length': String(stat.size),
-        'cache-control': 'public, max-age=0',
+        'cache-control': cacheControl,
       },
     });
   } catch {
@@ -36,7 +36,7 @@ function fileResponse(file: string): Response | null {
 /**
  * The browser client, served from `webDir` (PM_WEB_DIR). Until the v2 web app
  * lands this is the v1 client in legacy/, which is why the default points there.
- * Never serves uploads/: only three fixed files and the vendor directory.
+ * Never serves uploads/: only three fixed files and the vendor and assets directories.
  */
 export function staticRoutes(ctx: AppContext) {
   const router = new Hono<AppEnv>();
@@ -52,14 +52,27 @@ export function staticRoutes(ctx: AppContext) {
   router.get('/app.js', send('app.js'));
   router.get('/styles.css', send('styles.css'));
 
-  router.get('/vendor/*', (c) => {
-    const vendor = path.join(webDir, 'vendor');
-    const rel = decodeURIComponent(c.req.path.slice('/vendor/'.length));
-    const file = path.resolve(vendor, rel);
+  /** A directory of files under webDir, with the path kept inside it. */
+  const serveDir = (name: string, cacheControl?: string) => (c: Context) => {
+    const root = path.join(webDir, name);
+    let rel: string;
+    try {
+      rel = decodeURIComponent(c.req.path.slice(('/' + name + '/').length));
+    } catch {
+      return c.json({ error: 'not found' }, 404); // a malformed %-escape, not a server error
+    }
+    const file = path.resolve(root, rel);
     const res =
-      rel.includes('\0') || !file.startsWith(vendor + path.sep) ? null : fileResponse(file);
+      rel.includes('\0') || !file.startsWith(root + path.sep)
+        ? null
+        : fileResponse(file, cacheControl);
     return res ?? c.json({ error: 'not found' }, 404);
-  });
+  };
+
+  router.get('/vendor/*', serveDir('vendor'));
+  // Lazily loaded screens of the v2 client. The file names carry a content hash,
+  // so they can be cached for good.
+  router.get('/assets/*', serveDir('assets', 'public, max-age=31536000, immutable'));
 
   return router;
 }

@@ -3,7 +3,7 @@ import type { ErrorBody } from '@officepm/shared';
 /** An error that maps straight to a status code and a `{ error }` JSON body. */
 export class HttpError extends Error {
   constructor(
-    readonly status: 400 | 401 | 403 | 404 | 409 | 500,
+    readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500,
     message: string,
   ) {
     super(message);

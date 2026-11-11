@@ -1,9 +1,17 @@
 import { and, desc, eq, or, sql, type SQL } from 'drizzle-orm';
-import { flowSupports, type DodItem, type Ticket } from '@officepm/shared';
+import {
+  DodPatchRequestSchema,
+  TicketCreateRequestSchema,
+  TicketPatchRequestSchema,
+  type DodItem,
+  type Ticket,
+} from '@officepm/shared';
 import type { AppContext, JsonBody, SessionUser } from '../../context.js';
 import { allocateTicketKey, resolveStoredPath, schema } from '../../db/index.js';
 import { badRequest, conflict, notFound } from '../../http/errors.js';
+import { requireShape } from '../../http/validate.js';
 import { unlinkQuietly } from '../../lib/files.js';
+import { transitionViolation } from './transitions.js';
 import { labelsColumn, validateTicketExtras } from './validation.js';
 import { serializeTicket } from './serialize.js';
 
@@ -94,6 +102,7 @@ export function createTicketService(ctx: AppContext) {
           : (board.statuses[0] as string);
       const extrasErr = validateTicketExtras(b);
       if (extrasErr) throw badRequest(extrasErr);
+      requireShape(TicketCreateRequestSchema, b);
 
       const key = raw.transaction(() => {
         const next = allocateTicketKey(raw, board.prefix);
@@ -143,27 +152,13 @@ export function createTicketService(ctx: AppContext) {
         if (field === 'status' && found && !found.board.statuses.includes(body.status as string)) {
           throw badRequest('status must be one of: ' + found.board.statuses.join(', '));
         }
-        // Waterfall phases are sequential (17 open question 4): going forward may
-        // not skip a phase, moving back is always allowed. v1 enforces this for
-        // exactly the flows whose capability table says they run in phases.
-        if (
-          field === 'status' &&
-          found &&
-          flowSupports(found.board.flow, 'phases') &&
-          body.status !== existing.status
-        ) {
-          const { statuses } = found.board;
-          const oldIdx = statuses.indexOf(existing.status);
-          const newIdx = statuses.indexOf(body.status as string);
-          if (newIdx > oldIdx + 1) {
-            throw conflict(
-              'Waterfall boards are sequential only (PRD 17.4): move through "' +
-                statuses[oldIdx + 1] +
-                '" first, this board does not allow skipping ahead to "' +
-                body.status +
-                '"',
-            );
-          }
+        if (field === 'status' && found) {
+          const violation = transitionViolation(
+            found.board,
+            existing.status,
+            body.status as string,
+          );
+          if (violation) throw conflict(violation);
         }
         if (field === 'type' && found && !found.board.types.includes(body.type as string)) {
           throw badRequest('type must be one of: ' + found.board.types.join(', '));
@@ -183,6 +178,7 @@ export function createTicketService(ctx: AppContext) {
                   : value;
       }
       if (!Object.keys(set).length) throw badRequest('no patchable fields provided');
+      requireShape(TicketPatchRequestSchema, body);
 
       orm
         .update(tickets)
@@ -245,6 +241,7 @@ export function createTicketService(ctx: AppContext) {
     setDod(key: string, b: JsonBody): void {
       requireTicket(key);
       if (!b.item) throw badRequest('item required');
+      requireShape(DodPatchRequestSchema, b);
       orm
         .insert(ticketDod)
         .values({ ticket_key: key, item: b.item as string, done: b.done ? 1 : 0 })

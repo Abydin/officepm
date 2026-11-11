@@ -1,12 +1,14 @@
 import crypto from 'node:crypto';
 import { desc, eq, sql } from 'drizzle-orm';
-import type { GithubHookResult, GithubLink } from '@officepm/shared';
+import { GithubHookRequestSchema, type GithubHookResult, type GithubLink } from '@officepm/shared';
 import type { AppContext, JsonBody } from '../../context.js';
 import { schema } from '../../db/index.js';
+import { requireShape } from '../../http/validate.js';
 import { safeUrlOrNull } from '../../lib/urls.js';
 import type { BoardConfig } from '../../projects-config.js';
 import type { CommentService } from '../comments/service.js';
 import { serializeTicket } from '../tickets/serialize.js';
+import { transitionViolation } from '../tickets/transitions.js';
 
 /** What one hook does to a matched ticket. */
 interface Transition {
@@ -17,7 +19,8 @@ interface Transition {
   url: unknown;
   actor: string;
   environment?: string;
-  comment: (target: string) => string;
+  /** The sentence for the system comment; `outcome` says what happened to the ticket. */
+  comment: (outcome: string) => string;
 }
 
 export function createGithubService(ctx: AppContext, commentService: CommentService) {
@@ -32,6 +35,7 @@ export function createGithubService(ctx: AppContext, commentService: CommentServ
    */
   function apply(keys: string[], transition: (board: BoardConfig) => Transition): GithubHookResult {
     const matched: string[] = [];
+    const skipped: { key: string; reason: string }[] = [];
     for (const key of keys) {
       const ticket = orm.select().from(tickets).where(eq(tickets.key, key)).get();
       if (!ticket) continue;
@@ -39,11 +43,16 @@ export function createGithubService(ctx: AppContext, commentService: CommentServ
       if (!found || !found.board.has_github) continue;
       const t = transition(found.board);
       const target = t.target(found.board);
-      orm
-        .update(tickets)
-        .set({ status: target, updated_at: sql`datetime('now')` })
-        .where(eq(tickets.key, key))
-        .run();
+      // CI moves tickets by the same rules as a person does. A refused move is
+      // still recorded (the PR or deploy happened) and said so in a comment.
+      const violation = transitionViolation(found.board, ticket.status, target);
+      if (!violation) {
+        orm
+          .update(tickets)
+          .set({ status: target, updated_at: sql`datetime('now')` })
+          .where(eq(tickets.key, key))
+          .run();
+      }
       orm
         .insert(githubLinks)
         .values({
@@ -57,14 +66,19 @@ export function createGithubService(ctx: AppContext, commentService: CommentServ
           environment: t.environment ?? null,
         })
         .run();
-      commentService.addSystemComment(key, t.comment(target));
+      if (violation) {
+        commentService.addSystemComment(key, t.comment('Not moved: ' + violation + '.'));
+        skipped.push({ key, reason: violation });
+        continue;
+      }
+      commentService.addSystemComment(key, t.comment('Moved to "' + target + '".'));
       events.broadcast(
         'ticket.updated',
         serializeTicket(orm.select().from(tickets).where(eq(tickets.key, key)).get()!),
       );
       matched.push(key);
     }
-    return { ok: true, matched };
+    return skipped.length ? { ok: true, matched, skipped } : { ok: true, matched };
   }
 
   const text = (v: unknown) => (v as string) || '';
@@ -79,6 +93,7 @@ export function createGithubService(ctx: AppContext, commentService: CommentServ
         .all() as GithubLink[],
 
     prOpened(b: JsonBody): GithubHookResult {
+      requireShape(GithubHookRequestSchema, b);
       const keys = projects.extractTicketKeys(
         text(b.branch) + ' ' + text(b.title) + ' ' + text(b.commit_message),
       );
@@ -90,18 +105,18 @@ export function createGithubService(ctx: AppContext, commentService: CommentServ
         ref: (b.branch as string) || (b.ref as string) || '',
         url: b.url,
         actor: (b.actor as string) || 'github',
-        comment: (target) =>
+        comment: (outcome) =>
           'PR opened' +
           (b.url ? ': ' + b.url : '') +
           ' by ' +
           ((b.actor as string) || 'someone') +
-          '. Moved to "' +
-          target +
-          '".',
+          '. ' +
+          outcome,
       }));
     },
 
     deploy(b: JsonBody): GithubHookResult {
+      requireShape(GithubHookRequestSchema, b);
       const keys = projects.extractTicketKeys(
         text(b.branch) + ' ' + text(b.commit_message) + ' ' + text(b.ref),
       );
@@ -120,12 +135,12 @@ export function createGithubService(ctx: AppContext, commentService: CommentServ
         url: b.url,
         actor: (b.actor as string) || 'github',
         environment: env,
-        comment: (target) =>
-          'Deployed to ' + env + (b.url ? ': ' + b.url : '') + '. Moved to "' + target + '".',
+        comment: (outcome) => 'Deployed to ' + env + (b.url ? ': ' + b.url : '') + '. ' + outcome,
       }));
     },
 
     release(b: JsonBody): GithubHookResult {
+      requireShape(GithubHookRequestSchema, b);
       const changelog = b.changelog || b.commits || '';
       const keys = projects.extractTicketKeys(
         Array.isArray(changelog) ? changelog.join(' ') : String(changelog),
@@ -137,8 +152,7 @@ export function createGithubService(ctx: AppContext, commentService: CommentServ
         ref: (b.tag as string) || '',
         url: b.url,
         actor: (b.actor as string) || 'github',
-        comment: (target) =>
-          'Included in release ' + ((b.tag as string) || '') + '. Moved to "' + target + '".',
+        comment: (outcome) => 'Included in release ' + ((b.tag as string) || '') + '. ' + outcome,
       }));
     },
   };

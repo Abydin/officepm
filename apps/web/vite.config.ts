@@ -30,15 +30,15 @@ export default defineConfig({
     cssCodeSplit: false,
     rolldownOptions: {
       output: {
-        // The v2 server serves exactly index.html, app.js and styles.css from
-        // PM_WEB_DIR, so the build emits those three names and one bundle. That
-        // lets `PM_WEB_DIR=apps/web/dist` serve the client with no server change.
+        // The entry and the stylesheet keep fixed names, which the server serves
+        // from PM_WEB_DIR's root. The lazily loaded screens are split into hashed
+        // files under assets/, which the server serves immutable at /assets/*.
         entryFileNames: 'app.js',
+        chunkFileNames: path.join('assets', '[name]-[hash].js'),
         assetFileNames: (asset) =>
           asset.names.some((n) => n.endsWith('.css'))
             ? 'styles.css'
             : path.join('assets', '[name]-[hash][extname]'),
-        codeSplitting: false,
       },
     },
   },

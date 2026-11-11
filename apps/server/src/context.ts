@@ -2,6 +2,7 @@ import type { Dashboard } from '@officepm/shared';
 import type { Config } from './config.js';
 import type { OpenDatabase } from './db/index.js';
 import type { EventBus } from './events.js';
+import type { LoginThrottle } from './http/throttle.js';
 import type { ProjectsRegistry } from './projects-config.js';
 
 export interface SessionUser {
@@ -35,4 +36,6 @@ export interface AppContext {
   events: EventBus;
   /** Per-user dashboard results, cleared by any write. */
   dashboardCache: Map<number, DashboardCacheEntry>;
+  /** Failed-login throttle. Left out, the auth module makes its own with the defaults. */
+  loginThrottle?: LoginThrottle;
 }

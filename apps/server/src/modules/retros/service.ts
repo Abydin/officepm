@@ -1,9 +1,18 @@
 import crypto from 'node:crypto';
 import { and, asc, desc, eq } from 'drizzle-orm';
-import { RETRO_COLUMNS, type Retro, type RetroCard, type RetroWithCards } from '@officepm/shared';
+import {
+  RETRO_COLUMNS,
+  RetroCardPatchRequestSchema,
+  RetroCardRequestSchema,
+  RetroRequestSchema,
+  type Retro,
+  type RetroCard,
+  type RetroWithCards,
+} from '@officepm/shared';
 import type { AppContext, JsonBody, SessionUser } from '../../context.js';
 import { schema } from '../../db/index.js';
 import { badRequest, notFound } from '../../http/errors.js';
+import { requireShape } from '../../http/validate.js';
 
 export function createRetroService(ctx: AppContext) {
   const { orm } = ctx.db;
@@ -28,6 +37,7 @@ export function createRetroService(ctx: AppContext) {
 
     create(project: string, board: string, b: JsonBody): Retro {
       if (!b.name) throw badRequest('name required');
+      requireShape(RetroRequestSchema, b);
       return orm
         .insert(retros)
         .values({
@@ -59,6 +69,7 @@ export function createRetroService(ctx: AppContext) {
         throw badRequest('column must be well, didnt or actions');
       }
       if (!b.body) throw badRequest('body required');
+      requireShape(RetroCardRequestSchema, b);
       const card = orm
         .insert(retroCards)
         .values({
@@ -78,6 +89,7 @@ export function createRetroService(ctx: AppContext) {
     editCard(retroId: string, cardId: string, b: JsonBody): RetroCard {
       const card = cardOf(retroId, cardId);
       if (!card) throw notFound('card not found');
+      requireShape(RetroCardPatchRequestSchema, b);
       orm
         .update(retroCards)
         .set({ body: (b.body as string) ?? card.body })

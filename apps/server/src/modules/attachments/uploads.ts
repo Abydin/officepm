@@ -4,9 +4,9 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import type { Context } from 'hono';
 import { badRequest } from '../../http/errors.js';
+import { BodyTooLargeError, MAX_FILE_BYTES } from '../../http/limits.js';
 
 export const BLOCKED_EXTENSIONS = new Set(['.exe', '.sh', '.bat', '.cmd', '.js', '.html', '.htm']);
-export const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25MB
 export const MAX_FILES_PER_TICKET = 20;
 export const MAX_FILES_PER_PROJECT = 100;
 
@@ -45,6 +45,8 @@ export async function receiveUpload(
   try {
     form = await c.req.formData();
   } catch (e) {
+    // The body stream errors with this when it passes the request cap (limits.ts).
+    if (e instanceof BodyTooLargeError) throw e;
     throw badRequest((e as Error).message);
   }
 

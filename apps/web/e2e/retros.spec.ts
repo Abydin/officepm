@@ -9,11 +9,14 @@ test('opens the seeded retro, adds a card by keyboard, and it survives a reload'
   page,
 }) => {
   await page.goto('/#/projects/food/boards/eng');
-  await page.getByRole('link', { name: 'Retros' }).click();
+  await page.getByRole('link', { name: 'Retros', exact: true }).click();
   await page.getByRole('link', { name: 'Retro: Sprint 13' }).click();
   await expect(page).toHaveURL(/boards\/eng\/retros\/[0-9a-f-]+$/);
   // The tab stays current on the retro's own page.
-  await expect(page.getByRole('link', { name: 'Retros' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'Retros', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
 
   for (const name of ['Went well', "Didn't go well", 'Action items']) {
     await expect(page.getByRole('region', { name })).toBeVisible();

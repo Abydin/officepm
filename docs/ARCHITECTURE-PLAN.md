@@ -26,7 +26,8 @@ Exit: feature parity with the v1 client for the documented flows.
 P4 Hardening. Close the gaps recorded in the Phase 2 notes below (rate
 limiting, upload streaming, security headers, input validation on the shared
 schemas, the v1 quirks), add e2e coverage, and run both servers side by side
-to find any remaining behaviour gaps.
+to find any remaining behaviour gaps. Done in part: see the Phase 4 notes and
+the list that follows them.
 
 P5 Docs, Docker and demo. Package the server and web client in a container,
 write the README and ROLLOUT for v2 and the v1 pm.db migration, add the demo
@@ -129,7 +130,7 @@ Decisions.
 - One bundle. The build emits app.js and styles.css as single files (code
   splitting off in vite.config.ts) for the same reason: the static module serves
   those names and nothing under /assets. The cost is a single large script; see the
-  bundle-size levers in the P4 list.
+  bundle-size levers in the P4 list. (Phase 4 split the secondary screens out.)
 - Shared source aliasing. Vite and Vitest resolve @officepm/shared to
   packages/shared/src/index.ts, so a build or a test never reads a stale dist.
   Only the type check reads the built declarations, which is why `typecheck` and
@@ -235,20 +236,127 @@ themes with zero violations. Four tests were shown to fail with the code
 broken (the Definition of Ready gate, the admin guard, the Retros tab matching,
 the retros invalidation) and pass once restored.
 
+Phase 4 notes: hardening
+
+Scope. Ten items from the hardening list, done in the server (apps/server), the shared
+contract (packages/shared) and the build and CI of the client. The conformance suite
+was not touched: it passes 104 of 104 against both servers, unchanged.
+
+What changed.
+
+- Request size. http/limits.ts replaces the read-then-check in body.ts and uploads.ts.
+  A declared Content-Length over the cap is refused with 413 before the body is read;
+  whatever is declared, the body is also counted as it streams and errors the instant it
+  passes the cap, so a missing (chunked) or lying Content-Length cannot make the server
+  hold more than the cap. Hono's own bodyLimit was not used because it trusts a
+  Content-Length that is under the cap and buffers the chunked case. Caps: 2 MB for
+  everything, 25 MB plus 256 KB of multipart overhead on POST .../files. A file between
+  25 MB and the request cap still gets v1's 400 "file exceeds 25MB limit".
+  Limit: the multipart form is still parsed in memory, so an upload can hold up to about
+  25.25 MB at once. Streaming it to disk needs a streaming multipart parser (a new
+  dependency) and was left out.
+- Malformed JSON is a 400 ("request body is not valid JSON"), and a body that is JSON
+  but not an object or array is a 400 ("request body must be a JSON object"). v1 answered
+  500 for both. No conformance test covers either.
+- Login throttle (http/throttle.ts). Failures are counted per client address (30) and per
+  email (8) in a 15 minute window, checked before any bcrypt work, answered 429 with
+  Retry-After. A success clears that email. Only failures count, so normal use is never
+  blocked. State is in memory and bounded, and resets on restart. The address is the
+  socket's; behind a proxy set PM_TRUST_PROXY=1 to use the right-most X-Forwarded-For
+  entry (the one the proxy itself appended). Known trade-off: anyone can lock a named
+  account out for up to 15 minutes by failing its login on purpose. The compare was
+  already async bcrypt; a test now pins that the event loop keeps turning while it runs.
+  An unknown email now costs one decoy bcrypt compare, so timing does not reveal which
+  emails exist. Non-string credentials are a 400 (they used to throw inside bcrypt).
+- Event streams are closed when their user's password is reset, and when their session
+  logs out (EventBus.closeForUser and closeForSession). Not done: closing a stream when
+  its session merely expires, which is checked only when the stream opens.
+- Security headers (http/security-headers.ts) on every response, errors and static
+  files included: a Content-Security-Policy, X-Content-Type-Options nosniff, X-Frame-Options
+  DENY, Referrer-Policy no-referrer, Cross-Origin-Opener-Policy and Cross-Origin-Resource-Policy
+  same-origin, a Permissions-Policy that turns off camera, microphone, geolocation and payment,
+  Strict-Transport-Security only when X-Forwarded-Proto is https, and Cache-Control
+  no-store on /api responses that set none. The CSP is script-src 'self' plus the SHA-256 of
+  each inline script in the served index.html (the client has one, the theme bootstrap),
+  computed at startup, so the policy follows the file it ships with and never needs
+  'unsafe-inline' for scripts. style-src keeps 'unsafe-inline' because React, Radix and
+  dnd-kit set style attributes at runtime. Everything else is same-origin, objects and
+  base URIs are off and frame-ancestors is none. The e2e suite checks it with the real
+  built client: no CSP violation across sign-in, the lazy screens and the event stream,
+  the inline script runs through its hash, and another origin cannot frame the app.
+- Body validation. packages/shared/src/requests.ts holds a request schema for every
+  POST and PATCH body (tickets, DoD, comments, links, docs, sprints, retros and cards,
+  users, board settings, the three webhooks), and the services call it AFTER their own
+  v1 checks. So every v1 message is unchanged (they still win for missing fields, bad
+  types of ticket, status, priority, labels, due_date and sprint kind), and the schemas
+  only speak for cases v1 turned into a 500 or stored as garbage (POST /login keeps its own
+  hand-written typeof check rather than LoginInputSchema, for the same reason): a wrong-typed value is
+  a 400 naming the field ("invalid description: ..."). The schemas are looser than the
+  form schemas on purpose (a truthy blocked flag, empty-string dates and null for "not
+  set" stay valid). Deliberately stricter than v1: sprint dates must be real YYYY-MM-DD
+  (or empty), and a sprint status must be planned, active or completed.
+- Webhooks use the same transition rule as a manual move (tickets/transitions.ts, one
+  function both call). On a waterfall board a hook that would skip a phase does not move
+  the ticket; it still records the GitHub link, adds a system comment saying "Not moved: ..."
+  and lists the ticket under a new optional "skipped" field of the response (matched now
+  means moved). Nothing changes on the other four flows, which have no transition rule.
+  The seed's Acme board is the only waterfall board with has_github.
+- Backup. There was no backup route or script, only a tar command in the README and
+  ROLLOUT.md, which can tear pm.db in WAL mode. `pnpm run backup [dir]` (backup-main.ts)
+  takes the database with SQLite's online backup API (safe while the server writes),
+  checks the copy with PRAGMA integrity_check, then writes pm-backup-DATE.tar.gz holding
+  pm.db, projects.json and uploads/, the same layout as before. ROLLOUT.md and README.md
+  now show it. Restoring is still extracting the archive into an empty data directory.
+- pnpm audit found two moderate advisories, both in dev tooling: esbuild 0.18 under
+  drizzle-kit's esbuild-kit loader (a dev-server issue) and minimatch under ESLint. Both are
+  fixed with pnpm.overrides: esbuild 0.25.12 (published 2025-11-01) and minimatch 11.0.4
+  (published 9 days before this change; 11.0.5 and later were under 7 days old). pnpm audit
+  reports none now.
+- CI. The browser suite (e2e, including axe) already ran as its own job; it now keeps its
+  report on failure, and a ci-required job needs it and every other job, so branch
+  protection can require one name. Marking it required is a repository setting this code
+  cannot make. An audit job runs pnpm audit but is left out of ci-required, so a new
+  advisory flags itself without blocking an unrelated pull request.
+- Bundle. packages/shared is marked sideEffects false, so the bundler can drop what the client
+  does not import (worth 0.3 kB). The server now serves /assets/* (hashed files, immutable, same traversal guard as
+  /vendor, and a malformed percent escape is a 404 instead of the 500 it was), which made
+  code splitting possible: the Backlog, Epics, Retros, Standup, Docs and Admin screens load
+  on first visit through the router's lazy option. Gzipped before: app.js 222.0 kB.
+  After: app.js 204.6 kB plus a 12.3 kB shared chunk the browser preloads, so the first
+  load is 216.9 kB (about 2 percent less) and the six screens are about 12 kB loaded on demand.
+  The gain is small because almost all of the weight is react-dom, react-router, zod and
+  TanStack Query, which every screen needs. Two components had to change: a navigation test
+  now waits for the lazy route to commit, and an e2e selector for the Retros tab is exact,
+  because it used to pass only by finishing before the screen's own link rendered.
+  Skipped: zod/mini (every shared schema is written against the classic API and the
+  server uses the same package, so it is a rewrite of the contract, not a cheap lever) and
+  dropping tailwind-merge (about 12 kB gzipped, but it resolves class conflicts when a
+  component's className overrides a default, and nothing here would catch a visual
+  regression from losing that).
+
+Deviations from v1, all intended: 413 for an oversize body (v1: 500), 400 for malformed
+JSON (v1: 500), 429 on repeated failed logins, 400 for wrong-typed fields (v1: 500 or garbage
+stored), stricter sprint dates and status, a skipped webhook move on waterfall boards,
+no-store on API responses, and the new headers.
+
+Verification. Every new behaviour has a test in apps/server/src/hardening.test.ts,
+backup.test.ts or apps/web/e2e/security.spec.ts, and each was shown to fail with the code
+it covers broken and pass once restored (31 deliberate breakages of the server code, and 2 in the browser suite: dropping the
+CSP script hash and dropping the framing protection). Two of the first runs exposed weak
+tests, which were fixed: the integrity-check test of the backup, and a framing test that
+passed with framing allowed because the frame never loaded.
+
 P4 hardening list (current)
 
 Server.
 
-- Request size. A bodyLimit that streams: body.ts reads the whole text() before
-  checking MAX_JSON_BYTES, and uploads.ts reads formData() before checking the
-  25 MB limit, so both buffer an oversize body first. Cap while streaming and
-  answer 413.
-- Malformed JSON answers 400, not the 500 v1 gives (a conformance-visible quirk to
-  settle on purpose, not by accident).
-- Rate limiting, security headers, validating request bodies with the shared Zod
-  schemas while keeping v1's messages, and the other v1 quirks recorded in the
-  Phase 2 notes (sprints on kanban boards, three user shapes, DELETE of a missing
-  row answering 200, webhook status changes bypassing the waterfall rule).
+- Rate limiting on routes other than login. Login is throttled; nothing else is, which is
+  fine for a tailnet-only office tool and worth revisiting if it is ever exposed.
+- The v1 quirks still kept on purpose: sprints on kanban and scrumban boards, three
+  shapes of user, DELETE of a missing sprint, doc, file or link answering 200, and a
+  webhook's raw url quoted in the system comment.
+- Streaming uploads to disk, so a 25 MB upload is not held in memory while it is parsed.
+- Closing an event stream when its session expires, not only on reset and logout.
 - A users endpoint that non-admins may call (id, name, email only), so the
   assignee picker can list everyone instead of the signed-in person and the
   board's assignees.
@@ -257,8 +365,6 @@ Server.
 
 Web.
 
-- Bundle size. The single app.js is about 220 kB gzipped. Levers: zod/mini in the
-  client, dropping tailwind-merge, and code splitting (needs the server to serve
-  /assets/* and fall back to index.html for unknown paths).
-- axe in CI. The accessibility spec runs in the e2e suite; wire that suite into
-  CI so a violation fails a pull request.
+- Bundle size. 217 kB gzipped on first load. What is left is react-dom, react-router, zod
+  and TanStack Query; zod/mini and dropping tailwind-merge are the remaining levers,
+  each with the cost recorded above.

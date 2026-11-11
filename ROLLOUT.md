@@ -175,7 +175,19 @@ deliberately not wired up, and will just return `{"ok": true, "matched": []}`.
 
 ### 1.6 Backups
 
-Nightly, from cron or systemd timer:
+Nightly, from cron or systemd timer. On the v2 server use the backup script, which takes the
+database with SQLite's online backup API (consistent while the server is writing, and checked
+before it is trusted) and writes `pm-backup-DATE.tar.gz` holding `pm.db`, `projects.json` and `uploads/`:
+
+```bash
+cd /home/office/officepm
+PM_DATA_DIR=/home/office/officepm pnpm run backup /home/office/backups
+```
+
+Under cron, `pnpm` may not be on the PATH; the dependency-free form is
+`PM_DATA_DIR=/home/office/officepm node apps/server/dist/backup-main.js /home/office/backups`.
+
+The v1 server has no such script; there, tar is what you have, and it can catch pm.db mid-write:
 
 ```bash
 cd /home/office/officepm
@@ -186,7 +198,7 @@ Retain 30 days locally, and copy the weekly Sunday backup to the office
 NAS. A minimal cron entry:
 
 ```
-0 2 * * * cd /home/office/officepm && tar czf /home/office/backups/pm-backup-$(date +\%F).tar.gz pm.db projects.json uploads/ && find /home/office/backups -mtime +30 -delete
+0 2 * * * cd /home/office/officepm && PM_DATA_DIR=/home/office/officepm pnpm run backup /home/office/backups && find /home/office/backups -mtime +30 -delete
 ```
 
 SQLite runs in WAL mode already (set at startup), which is the main

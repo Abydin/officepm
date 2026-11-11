@@ -39,16 +39,26 @@ The e2e run seeds a throwaway database in the OS temp directory (`e2e/serve.mjs`
 
 ## Serving the build
 
-The v2 server serves exactly `index.html`, `app.js`, `styles.css` and `vendor/*` from `PM_WEB_DIR`.
-The build is shaped to fit: one JS bundle named `app.js`, one `styles.css`, and hash routes
-(`#/overview`), because there is no history-API fallback for deep links. So this works with no server change:
+The v2 server serves `index.html`, `app.js`, `styles.css`, `vendor/*` and `assets/*` from `PM_WEB_DIR`. The build is
+shaped to fit: an entry named `app.js`, one `styles.css`, the lazily loaded screens (Backlog, Epics, Retros, Standup,
+Docs, Admin) as hashed files under `assets/` (served immutable), and hash routes (`#/overview`), because there is no
+history-API fallback for deep links. No server change is needed:
 
 ```bash
 pnpm run build:web && PM_WEB_DIR=apps/web/dist PM_DATA_DIR=.data node apps/server/dist/main.js
 ```
 
-The cost is no code splitting (about 220 kB of gzipped JavaScript). Lifting it needs the server to serve `/assets/*` and fall back to
-`index.html`; that is a Phase 4 server change.
+Size, gzipped: 222.0 kB of JavaScript in one file before Phase 4; now 204.6 kB of entry plus a 12.3 kB shared chunk
+the browser preloads (216.9 kB on first load), with the six screens, about 12 kB, fetched on first visit. The rest is
+react-dom, react-router, zod and TanStack Query, which every screen needs.
+
+## Security headers
+
+The server sends a Content-Security-Policy with every response: scripts only from the page's own origin plus the
+SHA-256 of `index.html`'s one inline script (the theme bootstrap), styles from the origin and inline (React, Radix
+and dnd-kit set style attributes), no framing, no objects, and connections only to the same origin. So the client
+must not add an inline script, load a font, image or script from a CDN, or call another origin; `e2e/security.spec.ts`
+fails on any CSP violation. Changing the inline script in `index.html` is fine: the server hashes whatever file it serves.
 
 ## Layout
 
@@ -66,7 +76,7 @@ src/
   lib/api/              typed fetch client, the ApiError type, query keys
   lib/                  theme, formatting helpers, cn()
   test/                 Vitest setup and helpers (stubApi, renderApp)
-e2e/                    Playwright smoke test and its server launcher
+e2e/                    Playwright specs (one per view, axe, security headers) and the server launcher
 ```
 
 ### The API client (`src/lib/api`)
@@ -93,7 +103,7 @@ server's SSE events are mapped to keys in `features/events/event-keys.ts`; the s
 5. Add one route in `src/app/router.tsx`, and a sidebar or tab link if people need to reach it.
 6. Add a component test using `renderApp` and `stubApi` from `src/test/helpers.tsx`.
 
-## Status (phase 3c)
+## Status (phase 4)
 
 Built in 3b, on top of 3a (login, auth gate, app shell, overview, project list and page, board frame):
 
@@ -132,6 +142,10 @@ Added in 3c (the remaining v1 screens, none of them placeholders now):
 - **Admin** (`#/admin`, admins only): users, create a user (with the admin flag), reset a password in a dialog, and the
   boards from projects.json read only. The admin flag of an existing user cannot be changed: the server has no endpoint.
 - The top bar's sprint picker (v1's), a Docs & Files link under each project in the sidebar and an Admin link for admins.
+
+Phase 4 changed the build, not the screens: the secondary screens load lazily, the e2e suite gained a security spec
+(the CSP in a real browser), and CI now runs the whole e2e suite, axe included, in a job that a required `ci-required`
+check depends on.
 
 Rough edges, neither of which v1 had either: the command palette has no entries for Docs & Files or Admin (the sidebar has them), and
 the top bar's sprint picker, like v1's, only opens the backlog; it does not scroll to the chosen sprint.
