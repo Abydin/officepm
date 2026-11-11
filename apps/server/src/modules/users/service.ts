@@ -1,11 +1,27 @@
 import bcrypt from 'bcrypt';
 import { asc, eq, sql } from 'drizzle-orm';
-import { UserCreateRequestSchema, type CreatedUser, type UserListItem } from '@officepm/shared';
+import {
+  DepartmentSchema,
+  DepartmentSetSchema,
+  UserCreateRequestSchema,
+  firstRequestIssue,
+  type CreatedUser,
+  type Person,
+  type UserListItem,
+} from '@officepm/shared';
 import type { AppContext, JsonBody } from '../../context.js';
 import { schema } from '../../db/index.js';
 import { badRequest, conflict, notFound } from '../../http/errors.js';
 import { requireShape } from '../../http/validate.js';
 import { BCRYPT_ROUNDS } from '../auth/service.js';
+
+/** A validated department as stored: trimmed, or null for none. */
+function clean(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = DepartmentSchema.safeParse(value);
+  if (!parsed.success) throw badRequest('department must be one short line of up to 40 characters');
+  return parsed.data;
+}
 
 export function createUserService(ctx: AppContext) {
   const { orm } = ctx.db;
@@ -21,15 +37,26 @@ export function createUserService(ctx: AppContext) {
           name: users.name,
           is_admin: users.is_admin,
           created_at: users.created_at,
+          department: users.department,
         })
         .from(users)
         .orderBy(asc(users.created_at))
         .all() as UserListItem[];
     },
 
+    /** Name and department of everyone, for the handoff picker. Open to any signed-in user. */
+    people(): Person[] {
+      return orm
+        .select({ email: users.email, name: users.name, department: users.department })
+        .from(users)
+        .orderBy(asc(users.name), asc(users.id))
+        .all();
+    },
+
     async create(b: JsonBody): Promise<CreatedUser> {
       if (!b.email || !b.name || !b.password) throw badRequest('email, name, password required');
       requireShape(UserCreateRequestSchema, b);
+      const department = clean(b.department);
       const email = String(b.email).toLowerCase().trim();
       if (orm.select({ id: users.id }).from(users).where(eq(users.email, email)).get()) {
         throw conflict('a user with that email already exists');
@@ -37,10 +64,35 @@ export function createUserService(ctx: AppContext) {
       const hash = await bcrypt.hash(b.password as string, BCRYPT_ROUNDS);
       const created = orm
         .insert(users)
-        .values({ email, name: b.name as string, password: hash, is_admin: b.is_admin ? 1 : 0 })
+        .values({
+          email,
+          name: b.name as string,
+          password: hash,
+          is_admin: b.is_admin ? 1 : 0,
+          department,
+        })
         .returning({ id: users.id })
         .get();
       return { id: created.id, email, name: b.name as string, is_admin: !!b.is_admin };
+    },
+
+    /** Admin only. A blank or null department clears it. */
+    setDepartment(id: string, b: JsonBody): { id: number; department: string | null } {
+      const issue = firstRequestIssue(DepartmentSetSchema, {
+        department: b.department ?? undefined,
+      });
+      if (b.department === undefined || (issue && b.department !== null)) {
+        throw badRequest(issue ?? 'department required (use null to clear it)');
+      }
+      const department = clean(b.department);
+      const updated = orm
+        .update(users)
+        .set({ department })
+        .where(sql`${users.id} = ${id}`)
+        .returning({ id: users.id, department: users.department })
+        .get();
+      if (!updated) throw notFound('user not found');
+      return updated;
     },
 
     async setPassword(id: string, b: JsonBody): Promise<void> {

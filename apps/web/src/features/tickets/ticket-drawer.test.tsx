@@ -3,20 +3,31 @@ import userEvent from '@testing-library/user-event';
 import type { Ticket } from '@officepm/shared';
 import { describe, expect, it } from 'vitest';
 import { jsonResponse, renderApp, stubApi } from '@/test/helpers';
-import { makeTicket, signedIn, ticketRoutes } from '@/test/fixtures';
+import { handoffResult, makeTicket, signedIn, ticketRoutes } from '@/test/fixtures';
 
 /** A server whose PATCH really changes the ticket, so the drawer sees its own edits come back. */
-function setup(initial: Partial<Ticket> = {}, refuse?: string) {
+function setup(
+  initial: Partial<Ticket> = {},
+  refuse?: string,
+  extra: Record<string, unknown> = {},
+) {
   const ticket = { current: makeTicket(initial) };
   const fetchMock = stubApi({
     ...signedIn,
     'GET /api/tickets': () => jsonResponse([ticket.current]),
     ...ticketRoutes(ticket),
     'PATCH /api/tickets/FOOD-DES-1': (init) => {
-      if (refuse) return jsonResponse({ error: refuse }, 409);
       ticket.current = { ...ticket.current, ...JSON.parse(String(init?.body)) };
       return jsonResponse(ticket.current);
     },
+    'POST /api/tickets/FOOD-DES-1/handoff': (init) => {
+      if (refuse) return jsonResponse({ error: refuse }, 409);
+      const to = JSON.parse(String(init?.body)).to_status as string;
+      const result = handoffResult(ticket.current, to);
+      ticket.current = { ...ticket.current, status: to };
+      return jsonResponse(result);
+    },
+    ...extra,
     'POST /api/tickets/FOOD-DES-1/comments': (init) =>
       jsonResponse(
         {
@@ -34,7 +45,7 @@ function setup(initial: Partial<Ticket> = {}, refuse?: string) {
     fetchMock.mock.calls
       .filter(([, init]) => init?.method === 'PATCH')
       .map(([, init]) => JSON.parse(String(init?.body)) as Record<string, unknown>);
-  return { ticket, patches };
+  return { ticket, patches, fetchMock };
 }
 
 const open = async () => {
@@ -113,17 +124,72 @@ describe('ticket drawer', () => {
     await waitFor(() => expect(patches().at(-1)).toEqual({ labels: ['brand'] }));
   });
 
-  it('shows the server reason and puts the old status back when a change is refused', async () => {
+  it('opens the handoff dialog when the status is changed, and leaves the status alone until it is confirmed', async () => {
+    const { patches } = setup({ status: 'Backlog' });
+    const user = userEvent.setup();
+    const drawer = await open();
+    const status = within(drawer).getByLabelText('Status');
+
+    await user.selectOptions(status, 'Review');
+    const dialog = await screen.findByRole('dialog', { name: /Move FOOD-DES-1/ });
+    expect(within(dialog).getByRole('combobox', { name: 'Move to' })).toHaveValue('Review');
+    expect(status).toHaveValue('Backlog');
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(status).toHaveValue('Backlog');
+    expect(patches()).toEqual([]);
+
+    await user.selectOptions(status, 'Review');
+    await user.click(
+      within(await screen.findByRole('dialog', { name: /Move FOOD-DES-1/ })).getByRole('button', {
+        name: 'Approve and move',
+      }),
+    );
+    await waitFor(() => expect(status).toHaveValue('Review'));
+    expect(patches()).toEqual([]);
+  });
+
+  it('shows the server reason in the dialog and keeps the old status when the move is refused', async () => {
     setup({ status: 'Backlog' }, 'Waterfall boards are sequential only');
     const user = userEvent.setup();
     const drawer = await open();
     const status = within(drawer).getByLabelText('Status');
 
     await user.selectOptions(status, 'Review');
-    expect(await within(drawer).findByRole('alert')).toHaveTextContent(
+    const dialog = await screen.findByRole('dialog', { name: /Move FOOD-DES-1/ });
+    await user.click(within(dialog).getByRole('button', { name: 'Approve and move' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       'Waterfall boards are sequential only',
     );
-    await waitFor(() => expect(status).toHaveValue('Backlog'));
+    expect(status).toHaveValue('Backlog');
+  });
+
+  it('marks the handoffs on a ticket as read when its drawer opens, once', async () => {
+    let unread = [
+      {
+        id: 'h1',
+        ticket_key: 'FOOD-DES-1',
+        ticket_title: 'Logo refresh',
+        decision: 'approve',
+        from_status: 'Backlog',
+        to_status: 'In Progress',
+        from_name: 'Sam Adeyemi',
+        note: null,
+        reason: null,
+        created_at: '2026-10-03 10:00:00',
+      },
+    ];
+    const { fetchMock } = setup({}, undefined, {
+      'GET /api/handoffs/unread': () => jsonResponse(unread),
+      'POST /api/tickets/FOOD-DES-1/handoffs/read': () => {
+        unread = [];
+        return jsonResponse({ ok: true });
+      },
+    });
+    await open();
+    await waitFor(() => expect(unread).toEqual([]));
+    const reads = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/handoffs/read'));
+    expect(reads).toHaveLength(1);
   });
 
   it('posts a comment', async () => {

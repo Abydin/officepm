@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { Inbox, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import { Avatar } from '@/components/avatar';
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { useLogout } from '@/features/auth/api';
 import { useUser } from '@/features/auth/user-context';
+import { unreadLabel, useUnreadHandoffCount } from '@/features/handoffs/handoff-inbox';
 import { projectsQuery } from '@/features/projects/api';
 import { sprintsQuery } from '@/features/tickets/api';
 import { useTheme } from '@/lib/theme';
@@ -24,6 +25,7 @@ export function Topbar({
   const navigate = useNavigate();
   const projects = useQuery(projectsQuery);
   const logout = useLogout();
+  const unread = useUnreadHandoffCount();
   const { theme, toggle } = useTheme();
   const match = useMatch('/projects/:slug/*');
   const current = match?.params.slug ?? '';
@@ -104,6 +106,19 @@ export function Topbar({
         </div>
       )}
       <span className="flex-1" />
+      {unread > 0 && (
+        <Link
+          to="/mine"
+          aria-label={unreadLabel(unread)}
+          title="Handed to you"
+          className="flex min-h-8 items-center gap-1.5 rounded-md border border-accent bg-accent-soft px-2 text-accent no-underline"
+        >
+          <Inbox className="size-4" aria-hidden="true" />
+          <span aria-hidden="true" className="font-mono text-xs font-semibold">
+            {unread}
+          </span>
+        </Link>
+      )}
       <button
         type="button"
         onClick={onOpenPalette}

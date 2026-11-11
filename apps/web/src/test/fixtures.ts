@@ -58,11 +58,39 @@ export const signedIn = {
   'GET /api/projects': [foodProject],
   'GET /api/projects/food/boards/design': designBoard,
   'GET /api/dashboard': () => jsonResponse({}),
+  'GET /api/handoffs/unread': [],
+  'GET /api/people': [
+    { email: demoUser.email, name: 'Maya Okafor', department: 'Design' },
+    { email: 'sam@officepm.demo', name: 'Sam Adeyemi', department: 'Engineering' },
+  ],
   'GET /api/users': [
     { id: 1, email: demoUser.email, name: 'Maya Okafor', is_admin: 1, created_at: '' },
     { id: 2, email: 'sam@officepm.demo', name: 'Sam Adeyemi', is_admin: 0, created_at: '' },
   ],
 };
+
+/** What POST /api/tickets/:key/handoff answers with, for a ticket now in `status`. */
+export function handoffResult(ticket: Ticket, status: string) {
+  return {
+    ticket: { ...ticket, status },
+    comment: {
+      id: 1,
+      ticket_key: ticket.key,
+      author: 'Maya Okafor',
+      body: `Handed off from ${ticket.status} to ${status}.`,
+      source: 'handoff',
+      created_at: '2026-10-03 10:00:00',
+    },
+    handoff: {
+      id: 'h1',
+      decision: 'approve',
+      from_status: ticket.status,
+      to_status: status,
+      to_assignee: null,
+      to_department: null,
+    },
+  };
+}
 
 /** The ticket routes a drawer needs for one ticket, backed by a mutable record. */
 export function ticketRoutes(ticket: { current: Ticket }) {

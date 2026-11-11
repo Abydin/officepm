@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { signIn } from './helpers';
+import { SAM, signIn } from './helpers';
 
 // Reports every violation with its rule, impact and the elements it hit, so a
 // failure says what to fix. The page is checked in both themes.
@@ -49,6 +49,45 @@ for (const theme of ['dark', 'light'] as const) {
       const drawer = page.getByRole('dialog');
       await drawer.getByRole('button', { name: /^Assignee/ }).click();
       await expect(page.getByRole('combobox', { name: /Find a person/ })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('projects list with the full sidebar', async ({ page }) => {
+      await page.goto('/#/projects');
+      await expect(page.getByRole('heading', { level: 1, name: 'Projects' })).toBeVisible();
+      await expect(
+        page
+          .getByRole('navigation', { name: 'Projects and boards' })
+          .getByRole('link', { name: 'Acme', exact: true }),
+      ).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('handoff dialog, approving and rejecting', async ({ page }) => {
+      const res = await page.request.post('/api/tickets', {
+        data: {
+          project_slug: 'food',
+          board_slug: 'design',
+          title: `A11y handoff ${theme}`,
+          type: 'task',
+          status: 'In Progress',
+        },
+      });
+      const { key } = (await res.json()) as { key: string };
+      await page.goto(`/#/projects/food/boards/design?t=${key}`);
+      await page.getByRole('dialog').getByLabel('Status').selectOption('Review');
+      const dialog = page.getByRole('dialog', { name: `Move ${key}` });
+      await expect(dialog.getByRole('combobox', { name: 'Hand over to' })).toBeVisible();
+      await dialog.getByLabel('Add attachments').setInputFiles({
+        name: 'shot.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from('x'),
+      });
+      await expect(dialog.getByRole('list', { name: 'Attachments to send' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+
+      await dialog.getByRole('radio', { name: /Reject/ }).check();
+      await expect(dialog.getByRole('textbox', { name: /Reason/ })).toBeVisible();
       expect(await violations(page)).toEqual([]);
     });
 
@@ -138,6 +177,36 @@ for (const theme of ['dark', 'light'] as const) {
     test('my tickets', async ({ page }) => {
       await page.goto('/#/mine');
       await expect(page.getByRole('table')).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('my tickets with something handed to me', async ({ page, browser }) => {
+      // Sam hands a ticket to Maya, so Maya's page shows the inbox and the counts.
+      const context = await browser.newContext();
+      const sam = await context.newPage();
+      await signIn(sam, SAM);
+      const created = await sam.request.post('/api/tickets', {
+        data: {
+          project_slug: 'food',
+          board_slug: 'design',
+          title: `A11y inbox ${theme}`,
+          type: 'task',
+          status: 'In Progress',
+        },
+      });
+      const { key } = (await created.json()) as { key: string };
+      const handoff = await sam.request.post(`/api/tickets/${key}/handoff`, {
+        data: {
+          decision: 'approve',
+          assignee: 'maya.okafor@officepm.demo',
+          note: 'Please review the spacing',
+        },
+      });
+      expect(handoff.status()).toBe(200);
+      await context.close();
+
+      await page.goto('/#/mine');
+      await expect(page.getByRole('region', { name: 'Handed to you' })).toContainText(key);
       expect(await violations(page)).toEqual([]);
     });
   });

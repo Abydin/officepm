@@ -31,6 +31,13 @@ export const qk = {
     dod: (key: string) => ['tickets', 'detail', key, 'dod'] as const,
   },
   users: ['users'] as const,
+  // Everyone's name and department, for the handoff pickers. Open to any signed-in user.
+  people: ['people'] as const,
+  // Handoffs addressed to the signed-in person that they have not read yet.
+  handoffs: {
+    all: ['handoffs'] as const,
+    unread: () => ['handoffs', 'unread'] as const,
+  },
   sprints: {
     all: ['sprints'] as const,
     list: (slug: string, board: string) => ['sprints', 'list', slug, board] as const,

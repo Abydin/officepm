@@ -9,19 +9,31 @@ export function createCommentService(ctx: AppContext) {
   const { orm } = ctx.db;
   const { comments, tickets } = schema;
 
+  /** Writes the row without announcing it, for callers that announce after their own commit. */
+  function record(
+    ticketKey: string,
+    author: string,
+    body: string,
+    source: Comment['source'],
+  ): Comment {
+    return orm
+      .insert(comments)
+      .values({ ticket_key: ticketKey, author, body, source })
+      .returning()
+      .get() as Comment;
+  }
+
+  const announce = (row: Comment): void => ctx.events.broadcast('comment.created', row);
+
   function insert(
     ticketKey: string,
     author: string,
     body: string,
-    source: 'user' | 'system',
+    source: Comment['source'],
   ): Comment {
-    const row = orm
-      .insert(comments)
-      .values({ ticket_key: ticketKey, author, body, source })
-      .returning()
-      .get();
-    ctx.events.broadcast('comment.created', row);
-    return row as Comment;
+    const row = record(ticketKey, author, body, source);
+    announce(row);
+    return row;
   }
 
   return {
@@ -41,6 +53,13 @@ export function createCommentService(ctx: AppContext) {
       requireShape(CommentRequestSchema, b);
       return insert(ticketKey, user.name, b.body as string, 'user');
     },
+
+    /**
+     * Used by the handoff, which writes inside its own transaction: `record` stores
+     * the comment, and `announce` tells the event stream once that transaction has committed.
+     */
+    record,
+    announce,
 
     /** Written by the GitHub webhooks as "GitHub", flagged so the UI can style it. */
     addSystemComment: (ticketKey: string, body: string): Comment =>

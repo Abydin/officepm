@@ -1,5 +1,6 @@
 import {
   CreatedUserSchema,
+  DepartmentResultSchema,
   OkSchema,
   ProjectsConfigSchema,
   type PasswordReset,
@@ -20,6 +21,21 @@ export function useCreateUser() {
     mutationFn: (input: UserCreate) => api.post('/api/users', CreatedUserSchema, input),
     // The same list feeds the assignee pickers, so refresh it wherever it is cached.
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.users }),
+  });
+}
+
+/** Admin only. A blank department clears it. */
+export function useSetDepartment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, department }: { id: number; department: string | null }) =>
+      api.patch(`/api/users/${id}/department`, DepartmentResultSchema, {
+        department,
+      }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.users });
+      void queryClient.invalidateQueries({ queryKey: qk.people });
+    },
   });
 }
 

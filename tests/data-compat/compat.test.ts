@@ -8,7 +8,7 @@ import bcrypt from 'bcrypt';
 import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { allocateTicketKey } from '../../apps/server/src/db/counters.js';
-import { MIGRATIONS_TABLE } from '../../apps/server/src/db/migrate.js';
+import { MIGRATIONS, MIGRATIONS_TABLE } from '../../apps/server/src/db/migrate.js';
 import { openDatabase } from '../../apps/server/src/db/open.js';
 import { resolveStoredPath } from '../../apps/server/src/db/paths.js';
 import {
@@ -19,7 +19,14 @@ import {
   seededFixture,
   type Fixture,
 } from './support/fixtures.js';
-import { client, dumpRows, freshLegacySnapshot, snapshot, startLegacy } from './support/legacy.js';
+import {
+  V2_ADDITIONS,
+  client,
+  dumpRows,
+  freshLegacySnapshot,
+  snapshot,
+  startLegacy,
+} from './support/legacy.js';
 
 const dbFile = (fx: Fixture) => path.join(fx.dataDir, 'pm.db');
 
@@ -162,12 +169,14 @@ describe.each(cases)('$label', ({ build, extra }) => {
     }
   });
 
-  it('migrates without error and records the baseline', () => {
+  it('migrates without error and records every migration', () => {
+    const all = MIGRATIONS.map((m) => m.name);
+    expect(all[0]).toBe('0000-baseline');
     const opened = withDb(fx, (db) => db.applied);
-    expect(opened).toEqual(['0000-baseline']);
+    expect(opened).toEqual(all);
     withDb(fx, (db) => {
       const names = db.raw.prepare(`SELECT name FROM ${MIGRATIONS_TABLE}`).all();
-      expect(names).toEqual([{ name: '0000-baseline' }]);
+      expect(names).toEqual(all.map((name) => ({ name })));
     });
   });
 
@@ -184,10 +193,18 @@ describe.each(cases)('$label', ({ build, extra }) => {
     const snap = withDb(fx, (db) => snapshot(db.raw));
     expect(snap.master).toEqual(reference.master);
     expect(snap.tableInfo).toEqual(reference.tableInfo);
-    // The only intended extra is the migration bookkeeping table (and its PK index).
-    expect(snap.extras.sort()).toEqual([
+    // The only intended extras: the migration bookkeeping table and what the additive
+    // migrations declare in V2_ADDITIONS (their tables, indexes and primary-key indexes).
+    expect(V2_ADDITIONS.tables).toEqual(['ticket_handoffs', 'handoff_reads']);
+    expect([...snap.extras].sort()).toEqual([
       '_officepm_migrations',
+      'handoff_reads',
+      'idx_ticket_handoffs_assignee',
+      'idx_ticket_handoffs_ticket',
       'sqlite_autoindex__officepm_migrations_1',
+      'sqlite_autoindex_handoff_reads_1',
+      'sqlite_autoindex_ticket_handoffs_1',
+      'ticket_handoffs',
     ]);
   });
 

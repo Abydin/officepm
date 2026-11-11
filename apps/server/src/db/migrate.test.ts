@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MIGRATIONS_TABLE, runMigrations, type Migration } from './migrate.js';
+import { MIGRATIONS, MIGRATIONS_TABLE, runMigrations, type Migration } from './migrate.js';
 import { BASELINE_SQL, TICKET_EXTRA_COLUMNS } from './migrations/0000-baseline.js';
 
 let db: Database.Database;
@@ -13,11 +13,26 @@ const cols = (table: string) =>
   (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name);
 
 describe('runMigrations', () => {
-  it('applies the baseline to an empty database and records it', () => {
-    expect(runMigrations(db)).toEqual(['0000-baseline']);
+  it('applies every migration, baseline first, to an empty database and records them', () => {
+    expect(runMigrations(db)).toEqual(['0000-baseline', '0001-handoffs']);
+    expect(MIGRATIONS.map((m) => m.name)).toEqual(['0000-baseline', '0001-handoffs']);
     expect(cols('tickets')).toEqual(expect.arrayContaining(['priority', 'labels', 'due_date']));
     const rows = db.prepare(`SELECT name FROM ${MIGRATIONS_TABLE}`).all();
-    expect(rows).toEqual([{ name: '0000-baseline' }]);
+    expect(rows).toEqual([{ name: '0000-baseline' }, { name: '0001-handoffs' }]);
+  });
+
+  it('adds the department column and the handoff tables to a v1 database without touching its rows', () => {
+    db.exec(BASELINE_SQL);
+    db.prepare("INSERT INTO users (email, name, password) VALUES ('a@b.c', 'A', 'hash')").run();
+    runMigrations(db);
+    expect(cols('users')).toContain('department');
+    expect(db.prepare('SELECT email, password, department FROM users').all()).toEqual([
+      { email: 'a@b.c', password: 'hash', department: null },
+    ]);
+    expect(cols('ticket_handoffs')).toEqual(
+      expect.arrayContaining(['ticket_key', 'decision', 'to_assignee', 'to_department']),
+    );
+    expect(cols('handoff_reads')).toEqual(['handoff_id', 'user_id', 'read_at']);
   });
 
   it('is a no-op the second time', () => {

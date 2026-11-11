@@ -121,6 +121,20 @@ the same no-skipping rule as a person.
 per file, 20 per ticket, 100 per project), an extension blocklist, uuid filenames on
 disk, and downloads that always serve as an attachment and always require a session.
 
+**Handoffs.** Moving a ticket to another status (a drag, the Alt+arrow keys, or the
+status field in the ticket) opens a dialog instead of moving it at once. It shows the
+ticket, where it is and where it goes next (any later status the workflow allows), and
+asks for a decision: Approve moves it forward, Reject sends it back to the previous or a
+chosen earlier stage and needs a reason. The same dialog hands the ticket on: pick a
+person and or a department, add a note and attach screenshots or files (drop, paste or
+choose; the normal upload limits and blocklist apply). Confirming moves the ticket
+under the board's usual rules (a Waterfall board still refuses to skip a phase), sets
+the assignee, and posts the note as a comment marked Handoff. Cancel, or Esc, leaves
+the card where it was. The recipient is told: a count on My Tickets in the sidebar and
+top bar, a Handed to you list on My Tickets (including handoffs to their department),
+pushed live over the event stream. Departments are an optional label an admin sets per
+person on the Admin page; they filter the handoff's people picker.
+
 **Real-time.** Server-Sent Events, so a ticket someone else moves appears
 immediately without polling.
 
@@ -163,6 +177,23 @@ v1 created: the migrator in `apps/server/src/db/` applies additive migrations an
 records them in a table of its own, so a v1 `pm.db` opens unchanged. The client
 validates every response against the same Zod schemas the server tests use, so a
 handler that drifts from the contract fails a test rather than a screen.
+
+### API additions since v1
+
+All additive: v1's routes and response shapes are unchanged, and a v1 server still runs
+on the migrated database (migration `0001-handoffs`: one nullable column and two tables).
+
+| Route | Who | What |
+|---|---|---|
+| `POST /api/tickets/:key/handoff` | signed in (as for `PATCH /api/tickets/:key`) | `{ decision: "approve" or "reject", to_status?, from_status?, reason?, assignee?, department?, note?, attachment_ids? }`. Moves the ticket, sets the assignee, posts a comment with `source: "handoff"` and records the handoff, in one transaction. `reason` is required to reject. `to_status` defaults to the next (approve) or previous (reject) status. `from_status` makes it fail with 409 if the ticket moved meanwhile. Returns `{ ticket, comment, handoff }` |
+| `GET /api/handoffs/unread` | signed in | Handoffs addressed to you (by email, or by department when no person was named) that you have not read |
+| `POST /api/tickets/:key/handoffs/read` | signed in | Marks the handoffs on a ticket read for you |
+| `GET /api/people` | signed in | `[{ email, name, department }]`, for the handoff pickers (`GET /api/users` stays admin-only) |
+| `PATCH /api/users/:id/department` | admin | `{ department: string or null }`, up to 40 characters on one line |
+| `POST /api/users` | admin | now also accepts an optional `department` |
+
+`GET /api/users` rows gain `department`, comments may have `source: "handoff"`, and the
+event stream gains `handoff.created` (who and where, never the note or reason).
 
 ### Project layout
 

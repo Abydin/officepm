@@ -17,6 +17,8 @@ export const users = sqliteTable('users', {
   password: text('password').notNull(),
   is_admin: integer('is_admin').default(0),
   created_at: text('created_at').default(now),
+  // Added after v1 by migration 0001. Optional team name, set by an admin.
+  department: text('department'),
 });
 
 export const sessions = sqliteTable('sessions', {
@@ -193,6 +195,40 @@ export const ticketDod = sqliteTable(
     done: integer('done').default(0),
   },
   (t) => [primaryKey({ columns: [t.ticket_key, t.item] })],
+);
+
+export const ticketHandoffs = sqliteTable(
+  'ticket_handoffs',
+  {
+    id: text('id').primaryKey(),
+    ticket_key: text('ticket_key').notNull(),
+    decision: text('decision').notNull(),
+    from_status: text('from_status').notNull(),
+    to_status: text('to_status').notNull(),
+    reason: text('reason'),
+    note: text('note'),
+    from_email: text('from_email').notNull(),
+    from_name: text('from_name').notNull(),
+    to_assignee: text('to_assignee'),
+    to_department: text('to_department'),
+    attachment_ids: text('attachment_ids'),
+    comment_id: integer('comment_id'),
+    created_at: text('created_at').default(now),
+  },
+  (t) => [
+    index('idx_ticket_handoffs_ticket').on(t.ticket_key),
+    index('idx_ticket_handoffs_assignee').on(t.to_assignee),
+  ],
+);
+
+export const handoffReads = sqliteTable(
+  'handoff_reads',
+  {
+    handoff_id: text('handoff_id').notNull(),
+    user_id: integer('user_id').notNull(),
+    read_at: text('read_at').default(now),
+  },
+  (t) => [primaryKey({ columns: [t.handoff_id, t.user_id] })],
 );
 
 /** Additive bookkeeping table owned by migrate.ts. v1 never reads or writes it. */

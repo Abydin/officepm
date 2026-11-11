@@ -151,8 +151,35 @@ export interface Snapshot {
 }
 
 const squash = (s: string | null) => (s === null ? null : s.replace(/\s+/g, ' ').trim());
+
+/**
+ * What v2's additive migrations (0001 and later) put on top of v1's schema. Anything
+ * listed here is set aside, so the comparison with v1 still covers every v1 object and
+ * fails on any change that is not declared here. A migration that adds something adds
+ * it here too, in the same commit.
+ */
+export const V2_ADDITIONS = {
+  /** New tables, with their indexes and automatic primary-key indexes. */
+  tables: ['ticket_handoffs', 'handoff_reads'],
+  /** New nullable columns on v1 tables. */
+  columns: { users: ['department'] } as Record<string, string[]>,
+};
+
 const isExtra = (name: string) =>
-  name.startsWith('_officepm_') || name.startsWith('sqlite_autoindex__officepm_');
+  name.startsWith('_officepm_') ||
+  name.startsWith('sqlite_autoindex__officepm_') ||
+  V2_ADDITIONS.tables.some(
+    (t) => name === t || name.startsWith(`idx_${t}_`) || name.startsWith(`sqlite_autoindex_${t}_`),
+  );
+
+/** `ALTER TABLE ... ADD COLUMN` appends to the stored CREATE text, so take the column back out of it. */
+function withoutAddedColumns(table: string, sql: string | null): string | null {
+  let out = sql;
+  for (const column of V2_ADDITIONS.columns[table] ?? []) {
+    out = out && out.replace(new RegExp(`,\\s*${column}\\s+\\w+(?=\\s*\\)\\s*$)`), '');
+  }
+  return out;
+}
 
 export function snapshot(db: Database.Database): Snapshot {
   const all = db
@@ -161,10 +188,13 @@ export function snapshot(db: Database.Database): Snapshot {
   const extras = all.filter((r) => isExtra(r.name) || isExtra(r.tbl_name)).map((r) => r.name);
   const master = all
     .filter((r) => !extras.includes(r.name))
-    .map((r) => ({ ...r, sql: squash(r.sql) }));
+    .map((r) => ({ ...r, sql: withoutAddedColumns(r.tbl_name, squash(r.sql)) }));
   const tableInfo: Record<string, unknown[]> = {};
   for (const t of master.filter((r) => r.type === 'table')) {
-    tableInfo[t.name] = db.prepare(`PRAGMA table_info(${t.name})`).all();
+    const added = V2_ADDITIONS.columns[t.name] ?? [];
+    tableInfo[t.name] = (
+      db.prepare(`PRAGMA table_info(${t.name})`).all() as Array<{ name: string }>
+    ).filter((c) => !added.includes(c.name));
   }
   return { master, tableInfo, extras };
 }

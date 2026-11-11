@@ -28,6 +28,8 @@ export const UserListItemSchema = z.object({
   name: z.string(),
   is_admin: z.number().int(),
   created_at: Timestamp,
+  /** Added after v1, so a v1 server's rows have none. */
+  department: z.string().nullish(),
 });
 export type UserListItem = z.infer<typeof UserListItemSchema>;
 
@@ -170,7 +172,7 @@ export const CommentSchema = z.object({
   ticket_key: z.string(),
   author: z.string(),
   body: z.string(),
-  source: z.enum(['user', 'system']),
+  source: z.enum(['user', 'system', 'handoff']),
   created_at: Timestamp,
 });
 export type Comment = z.infer<typeof CommentSchema>;
@@ -472,3 +474,68 @@ export const ProjectsConfigSchema = z.object({
   ),
 });
 export type ProjectsConfig = z.infer<typeof ProjectsConfigSchema>;
+
+// ---- departments and handoffs ---------------------------------------------------
+// Added after v1. A department is an optional free-text team name on a user, set by
+// an admin, used to suggest who a ticket can be handed to.
+
+/** One short line: the same limits the server applies. */
+export const DepartmentSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(40)
+  .regex(/^[^\u0000-\u001f\u007f]+$/, 'must be a single line');
+export type Department = z.infer<typeof DepartmentSchema>;
+
+/** PATCH /api/users/:id/department (admin only). Null or empty clears it. */
+export const DepartmentSetSchema = z.object({ department: z.union([DepartmentSchema, z.null()]) });
+export type DepartmentSet = z.infer<typeof DepartmentSetSchema>;
+
+/** PATCH /api/users/:id/department response. */
+export const DepartmentResultSchema = z.object({
+  id: z.number().int(),
+  department: z.string().nullable(),
+});
+export type DepartmentResult = z.infer<typeof DepartmentResultSchema>;
+
+/** GET /api/people: who a ticket can be handed to. Open to any signed-in user. */
+export const PersonSchema = z.object({
+  email: z.string(),
+  name: z.string(),
+  department: z.string().nullable(),
+});
+export type Person = z.infer<typeof PersonSchema>;
+
+export const HandoffDecisionSchema = z.enum(['approve', 'reject']);
+export type HandoffDecision = z.infer<typeof HandoffDecisionSchema>;
+
+/** One handoff addressed to the signed-in person and not read yet. */
+export const HandoffNoticeSchema = z.object({
+  id: z.string(),
+  ticket_key: z.string(),
+  ticket_title: z.string(),
+  decision: HandoffDecisionSchema,
+  from_status: z.string(),
+  to_status: z.string(),
+  from_name: z.string(),
+  note: z.string().nullable(),
+  reason: z.string().nullable(),
+  created_at: Timestamp,
+});
+export type HandoffNotice = z.infer<typeof HandoffNoticeSchema>;
+
+/** POST /api/tickets/:key/handoff response. */
+export const HandoffResultSchema = z.object({
+  ticket: TicketSchema,
+  comment: CommentSchema,
+  handoff: z.object({
+    id: z.string(),
+    decision: HandoffDecisionSchema,
+    from_status: z.string(),
+    to_status: z.string(),
+    to_assignee: z.string().nullable(),
+    to_department: z.string().nullable(),
+  }),
+});
+export type HandoffResult = z.infer<typeof HandoffResultSchema>;

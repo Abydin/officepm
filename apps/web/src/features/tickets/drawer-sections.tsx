@@ -230,11 +230,14 @@ export function ActivitySection({ ticket }: { ticket: Ticket }) {
             <Avatar who={c.source === 'system' ? 'GitHub' : c.author} />
             <div className="min-w-0 flex-1">
               <span className="font-semibold">{c.author}</span>
+              {c.source === 'handoff' && <Badge className="ml-2">Handoff</Badge>}
               <span className="ml-2 text-xs text-dim">{timeAgo(c.created_at)}</span>
               <div
                 className={cn(
                   'break-words whitespace-pre-wrap',
                   c.source === 'system' && 'text-dim italic',
+                  c.source === 'handoff' &&
+                    'mt-0.5 rounded-md border-l-[3px] border-accent bg-accent-soft px-2 py-1',
                 )}
               >
                 {c.body}

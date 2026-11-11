@@ -4,6 +4,7 @@ import { DueChip } from '@/components/due-chip';
 import { StatusPill } from '@/components/status-pill';
 import { EmptyState, ErrorAlert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
+import { HandoffInbox } from '@/features/handoffs/handoff-inbox';
 import { myTicketsQuery } from '@/features/tickets/api';
 import { useTicketDrawer } from '@/features/tickets/use-ticket-drawer';
 import { errorMessage } from '@/lib/api';
@@ -16,6 +17,7 @@ export function MyTicketsPage() {
   return (
     <>
       <h1 className="m-0 mb-4 text-[22px] font-semibold">My Tickets</h1>
+      <HandoffInbox />
       {tickets.isError && <ErrorAlert>{errorMessage(tickets.error)}</ErrorAlert>}
       {tickets.isPending && (
         <div role="status" aria-label="Loading your tickets" className="space-y-2">

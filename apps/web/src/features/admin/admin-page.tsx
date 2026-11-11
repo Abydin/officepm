@@ -10,9 +10,10 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useUser } from '@/features/auth/user-context';
+import { CommitInput } from '@/features/tickets/commit-fields';
 import { usersQuery } from '@/features/tickets/api';
 import { errorMessage } from '@/lib/api';
-import { projectsConfigQuery, useCreateUser, useResetPassword } from './api';
+import { projectsConfigQuery, useCreateUser, useResetPassword, useSetDepartment } from './api';
 
 const th = 'px-3 py-2 font-medium';
 const td = 'px-3 py-2';
@@ -23,6 +24,7 @@ function CreateUserForm({ onCreated }: { onCreated: (name: string) => void }) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [department, setDepartment] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const complete = email.trim() && name.trim() && password;
 
@@ -30,12 +32,19 @@ function CreateUserForm({ onCreated }: { onCreated: (name: string) => void }) {
     event.preventDefault();
     if (!complete) return;
     create.mutate(
-      { email: email.trim(), name: name.trim(), password, is_admin: isAdmin },
+      {
+        email: email.trim(),
+        name: name.trim(),
+        password,
+        is_admin: isAdmin,
+        ...(department.trim() ? { department: department.trim() } : {}),
+      },
       {
         onSuccess: (created) => {
           setEmail('');
           setName('');
           setPassword('');
+          setDepartment('');
           setIsAdmin(false);
           onCreated(created.name);
         },
@@ -82,6 +91,19 @@ function CreateUserForm({ onCreated }: { onCreated: (name: string) => void }) {
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+        <div className="min-w-40 flex-1">
+          <label htmlFor="new-user-department" className="mb-1 block text-xs text-dim">
+            Department (optional)
+          </label>
+          <Input
+            id="new-user-department"
+            autoComplete="off"
+            maxLength={40}
+            list="department-suggestions"
+            value={department}
+            onChange={(e) => setDepartment(e.target.value)}
           />
         </div>
         <label className="flex min-h-8 items-center gap-2">
@@ -237,6 +259,12 @@ function BoardsTable() {
 
 function AdminContent() {
   const users = useQuery(usersQuery);
+  const setDepartment = useSetDepartment();
+  // Bumped when a change is refused, so the box shows the saved value again.
+  const [version, setVersion] = useState(0);
+  const departments = [
+    ...new Set((users.data ?? []).map((u) => u.department).filter((d): d is string => !!d)),
+  ].sort();
   const [resetting, setResetting] = useState<UserListItem | null>(null);
   const [notice, setNotice] = useState('');
 
@@ -251,7 +279,15 @@ function AdminContent() {
           Users
         </h2>
         {users.isError && <ErrorAlert>{errorMessage(users.error)}</ErrorAlert>}
+        {setDepartment.isError && (
+          <ErrorAlert className="mb-3">{errorMessage(setDepartment.error)}</ErrorAlert>
+        )}
         {users.isPending && <Skeleton className="h-24" />}
+        <datalist id="department-suggestions">
+          {departments.map((d) => (
+            <option key={d} value={d} />
+          ))}
+        </datalist>
         {users.data && (
           <div className={table}>
             <table aria-label="Users" className="w-full border-collapse text-left">
@@ -262,6 +298,9 @@ function AdminContent() {
                   </th>
                   <th scope="col" className={th}>
                     Name
+                  </th>
+                  <th scope="col" className={th}>
+                    Department
                   </th>
                   <th scope="col" className={th}>
                     Role
@@ -276,6 +315,23 @@ function AdminContent() {
                   <tr key={u.id} className="border-b border-line last:border-b-0 hover:bg-hover">
                     <td className={td}>{u.email}</td>
                     <td className={td}>{u.name}</td>
+                    <td className={td}>
+                      <CommitInput
+                        key={`${version}:${u.id}:${u.department ?? ''}`}
+                        aria-label={`Department for ${u.name}`}
+                        list="department-suggestions"
+                        maxLength={40}
+                        placeholder="None"
+                        value={u.department ?? ''}
+                        className="max-w-44"
+                        onCommit={(value) =>
+                          setDepartment.mutate(
+                            { id: u.id, department: value.trim() || null },
+                            { onError: () => setVersion((v) => v + 1) },
+                          )
+                        }
+                      />
+                    </td>
                     <td className={td}>{u.is_admin ? <Badge>Admin</Badge> : null}</td>
                     <td className={`${td} text-right`}>
                       <Button

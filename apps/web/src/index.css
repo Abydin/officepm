@@ -34,7 +34,8 @@
   --text: #e8eaef;
   --text-dim: #98a0ae;
   --accent: #6a8dff;
-  --accent-ink: #fff;
+  /* White on this blue is about 3:1; dark ink is above 6:1, and the primary buttons need 4.5:1. */
+  --accent-ink: #0a0d14;
   --accent-soft: rgba(106, 141, 255, 0.14);
   --focus-ring: #7d9bff;
   --red-soft: rgba(229, 83, 75, 0.14);

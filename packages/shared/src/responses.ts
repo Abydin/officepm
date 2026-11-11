@@ -6,6 +6,8 @@ import {
   DocSchema,
   DodItemSchema,
   GithubLinkSchema,
+  HandoffNoticeSchema,
+  PersonSchema,
   ProjectFileSchema,
   ProjectSchema,
   RetroSchema,
@@ -73,6 +75,7 @@ export const SERVER_EVENTS = [
   'ticket.updated',
   'ticket.deleted',
   'comment.created',
+  'handoff.created',
   'sprint.created',
   'sprint.updated',
   'sprint.deleted',
@@ -80,3 +83,8 @@ export const SERVER_EVENTS = [
 ] as const;
 export const ServerEventNameSchema = z.enum(SERVER_EVENTS);
 export type ServerEventName = z.infer<typeof ServerEventNameSchema>;
+
+export const PersonListSchema = z.array(PersonSchema);
+export type PersonList = z.infer<typeof PersonListSchema>;
+export const HandoffNoticeListSchema = z.array(HandoffNoticeSchema);
+export type HandoffNoticeList = z.infer<typeof HandoffNoticeListSchema>;

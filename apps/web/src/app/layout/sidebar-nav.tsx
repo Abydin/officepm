@@ -4,6 +4,7 @@ import { NavLink, useMatch } from 'react-router';
 import type { Project } from '@officepm/shared';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useUser } from '@/features/auth/user-context';
+import { unreadLabel, useUnreadHandoffCount } from '@/features/handoffs/handoff-inbox';
 import { projectsQuery } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
 
@@ -74,6 +75,7 @@ function ProjectGroup({ project, onNavigate }: { project: Project; onNavigate?: 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const projects = useQuery(projectsQuery);
   const user = useUser();
+  const unread = useUnreadHandoffCount();
   const scope = useMatch('/projects/:slug/*')?.params.slug;
   const scoped = scope ? projects.data?.find((p) => p.slug === scope) : undefined;
 
@@ -91,6 +93,17 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           </Item>
           <Item to="/mine" onNavigate={onNavigate}>
             My Tickets
+            {unread > 0 && (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="ml-auto min-w-5 rounded-full bg-accent px-1.5 text-center font-mono text-[11px] leading-[18px] text-accent-ink"
+                >
+                  {unread}
+                </span>
+                <span className="sr-only">, {unreadLabel(unread)}</span>
+              </>
+            )}
           </Item>
           <Item to="/projects" end onNavigate={onNavigate}>
             Projects

@@ -123,6 +123,113 @@ describe('admin page', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it("shows each person's department and saves an edited one, or clears it", async () => {
+    const patches: Array<{ url: string; body: unknown }> = [];
+    const users = [
+      {
+        id: 1,
+        email: demoUser.email,
+        name: 'Maya Okafor',
+        is_admin: 1,
+        created_at: '',
+        department: 'Design',
+      },
+      {
+        id: 2,
+        email: 'sam@officepm.demo',
+        name: 'Sam Adeyemi',
+        is_admin: 0,
+        created_at: '',
+        department: null,
+      },
+    ];
+    stubApi(
+      routes({
+        'GET /api/users': users,
+        'PATCH /api/users/2/department': (init: RequestInit | undefined) => {
+          patches.push({ url: '2', body: JSON.parse(String(init?.body)) });
+          return jsonResponse({ id: 2, department: 'Engineering' });
+        },
+        'PATCH /api/users/1/department': (init: RequestInit | undefined) => {
+          patches.push({ url: '1', body: JSON.parse(String(init?.body)) });
+          return jsonResponse({ id: 1, department: null });
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp('/admin');
+
+    const maya = await screen.findByLabelText('Department for Maya Okafor');
+    expect(maya).toHaveValue('Design');
+    const sam = screen.getByLabelText('Department for Sam Adeyemi');
+    expect(sam).toHaveValue('');
+
+    await user.type(sam, '  Engineering ');
+    await user.tab();
+    await waitFor(() =>
+      expect(patches).toEqual([{ url: '2', body: { department: 'Engineering' } }]),
+    );
+
+    await user.clear(screen.getByLabelText('Department for Maya Okafor'));
+    await user.tab();
+    await waitFor(() => expect(patches.at(-1)).toEqual({ url: '1', body: { department: null } }));
+  });
+
+  it('shows the server message and puts the old department back when a change is refused', async () => {
+    stubApi(
+      routes({
+        'GET /api/users': [
+          {
+            id: 2,
+            email: 'sam@officepm.demo',
+            name: 'Sam Adeyemi',
+            is_admin: 0,
+            created_at: '',
+            department: 'Design',
+          },
+        ],
+        'PATCH /api/users/2/department': jsonResponse(
+          { error: 'department must be one short line' },
+          400,
+        ),
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp('/admin');
+    const field = await screen.findByLabelText('Department for Sam Adeyemi');
+    await user.type(field, ' and more');
+    await user.tab();
+    expect(await screen.findByRole('alert')).toHaveTextContent('department must be one short line');
+    await waitFor(() =>
+      expect(screen.getByLabelText('Department for Sam Adeyemi')).toHaveValue('Design'),
+    );
+  });
+
+  it('creates a user with a department when one is typed', async () => {
+    const posts: unknown[] = [];
+    stubApi(
+      routes({
+        'POST /api/users': (init: RequestInit | undefined) => {
+          posts.push(JSON.parse(String(init?.body)));
+          return jsonResponse(
+            { id: 9, email: 'new@x.demo', name: 'New Person', is_admin: false },
+            201,
+          );
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp('/admin');
+    await screen.findByRole('table', { name: 'Users' });
+    await user.type(screen.getByLabelText('Email'), 'new@x.demo');
+    await user.type(screen.getByLabelText('Name', { exact: true }), 'New Person');
+    await user.type(screen.getByLabelText('Password', { exact: true }), 'secret-pass');
+    await user.type(screen.getByLabelText('Department (optional)'), 'Design');
+    await user.click(screen.getByRole('button', { name: 'Create user' }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toMatchObject({ email: 'new@x.demo', department: 'Design' });
+  });
+
   it('does not show the admin page to someone who is not an admin, or ask for its data', async () => {
     const fetchMock = stubApi({
       ...routes(),

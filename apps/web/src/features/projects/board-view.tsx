@@ -11,23 +11,21 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import type { Board, Ticket } from '@officepm/shared';
-import { X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { StatusDot } from '@/components/status-dot';
 import { Button } from '@/components/ui/button';
-import { EmptyState, ErrorAlert } from '@/components/ui/alert';
+import { EmptyState } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useUser } from '@/features/auth/user-context';
+import { HandoffDialog, type HandoffRequest } from '@/features/handoffs/handoff-dialog';
 import { useBoardSelection } from '@/features/shortcuts/board-selection';
 import { usePeople } from '@/features/tickets/people';
 import { useTicketDrawer } from '@/features/tickets/use-ticket-drawer';
-import { errorMessage } from '@/lib/api';
 import { personName } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { useMoveTicket } from './api';
 import {
   ASSIGNED_TO_ME,
   UNASSIGNED,
@@ -129,14 +127,15 @@ function refocusCard(key: string) {
  * filters, and live updates (the app-wide event stream refreshes the ticket list).
  */
 export function BoardView() {
-  const { projectSlug, board, tickets } = useBoardFrame();
+  const { board, tickets } = useBoardFrame();
   const me = useUser();
   const [params, setParams] = useSearchParams();
   const filters = readFilters(params);
   const { assignee, label, q } = filters;
   const { open } = useTicketDrawer();
   const { selectedKey, keysRef } = useBoardSelection();
-  const move = useMoveTicket(projectSlug, board.slug);
+  // A status change waits here for the handoff dialog's answer: nothing moves until it is confirmed.
+  const [pending, setPending] = useState<HandoffRequest | null>(null);
   const people = usePeople(tickets);
   const [dragging, setDragging] = useState<Ticket | null>(null);
 
@@ -180,10 +179,9 @@ export function BoardView() {
     (key: string, status: string) => {
       const ticket = tickets?.find((t) => t.key === key);
       if (!ticket || ticket.status === status) return;
-      move.mutate({ key, status });
-      refocusCard(key);
+      setPending({ ticket, board, target: status });
     },
-    [move, tickets],
+    [board, tickets],
   );
 
   const moveBy = useCallback(
@@ -221,8 +219,6 @@ export function BoardView() {
       </div>
     );
   }
-
-  const failed = move.isError ? move.variables : null;
 
   return (
     <>
@@ -328,25 +324,21 @@ export function BoardView() {
         </DragOverlay>
       </DndContext>
 
-      {failed && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
-          <ErrorAlert className="pointer-events-auto flex max-w-xl items-start gap-3 shadow-pop">
-            <span className="min-w-0 flex-1">
-              <strong>
-                {failed.key} did not move to {failed.status}.
-              </strong>{' '}
-              {errorMessage(move.error)}
-            </span>
-            <button
-              type="button"
-              aria-label="Dismiss"
-              className="cursor-pointer rounded p-0.5 hover:bg-err/20"
-              onClick={() => move.reset()}
-            >
-              <X className="size-4" aria-hidden="true" />
-            </button>
-          </ErrorAlert>
-        </div>
+      {pending && (
+        <HandoffDialog
+          // One dialog per request, so its fields start fresh for the next ticket.
+          key={pending.ticket.key + ':' + pending.target}
+          request={pending}
+          onClose={() => {
+            setPending(null);
+            // The card never left its column, so focus goes back to it where it was.
+            refocusCard(pending.ticket.key);
+          }}
+          onDone={() => {
+            setPending(null);
+            refocusCard(pending.ticket.key);
+          }}
+        />
       )}
     </>
   );

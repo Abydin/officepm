@@ -1,4 +1,4 @@
-import { and, desc, eq, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import {
   DodPatchRequestSchema,
   TicketCreateRequestSchema,
@@ -46,8 +46,17 @@ export interface TicketListQuery {
 
 export function createTicketService(ctx: AppContext) {
   const { orm, raw } = ctx.db;
-  const { tickets, ticketFiles, ticketLinks, comments, githubLinks, ticketDod, boardSettings } =
-    schema;
+  const {
+    tickets,
+    ticketFiles,
+    ticketLinks,
+    comments,
+    githubLinks,
+    ticketDod,
+    boardSettings,
+    ticketHandoffs,
+    handoffReads,
+  } = schema;
   const { projects, events } = ctx;
 
   const byKey = (key: string) => orm.select().from(tickets).where(eq(tickets.key, key)).get();
@@ -206,6 +215,18 @@ export function createTicketService(ctx: AppContext) {
         tx.delete(comments).where(eq(comments.ticket_key, key)).run();
         tx.delete(githubLinks).where(eq(githubLinks.ticket_key, key)).run();
         tx.delete(ticketDod).where(eq(ticketDod.ticket_key, key)).run();
+        tx.delete(handoffReads)
+          .where(
+            inArray(
+              handoffReads.handoff_id,
+              tx
+                .select({ id: ticketHandoffs.id })
+                .from(ticketHandoffs)
+                .where(eq(ticketHandoffs.ticket_key, key)),
+            ),
+          )
+          .run();
+        tx.delete(ticketHandoffs).where(eq(ticketHandoffs.ticket_key, key)).run();
         tx.update(tickets).set({ parent_key: null }).where(eq(tickets.parent_key, key)).run();
         tx.delete(tickets).where(eq(tickets.key, key)).run();
       });

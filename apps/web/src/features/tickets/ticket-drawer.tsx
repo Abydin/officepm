@@ -8,7 +8,7 @@ import {
 } from '@officepm/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from '@/components/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,8 @@ import { Combobox } from '@/components/ui/combobox';
 import { DrawerContent } from '@/components/ui/sheet';
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useMarkHandoffsRead, unreadHandoffsQuery } from '@/features/handoffs/api';
+import { HandoffDialog } from '@/features/handoffs/handoff-dialog';
 import { boardQuery, boardTicketsQuery } from '@/features/projects/api';
 import { boardLabels } from '@/features/projects/board-filter';
 import { errorMessage } from '@/lib/api';
@@ -52,6 +54,19 @@ function TicketDrawer({ ticketKey }: { ticketKey: string }) {
     ...boardQuery(t?.project_slug ?? '', t?.board_slug ?? ''),
     enabled: Boolean(t),
   });
+
+  // Opening a ticket is reading what was handed over on it.
+  const unread = useQuery(unreadHandoffsQuery);
+  const { mutate: markHandoffsRead } = useMarkHandoffsRead();
+  const requested = useRef(new Set<string>());
+  useEffect(() => {
+    const fresh = (unread.data ?? []).filter(
+      (n) => n.ticket_key === ticketKey && !requested.current.has(n.id),
+    );
+    if (fresh.length === 0) return;
+    for (const n of fresh) requested.current.add(n.id);
+    markHandoffsRead(ticketKey);
+  }, [unread.data, markHandoffsRead, ticketKey]);
 
   return (
     <Dialog.Root open onOpenChange={(open) => !open && close()}>
@@ -101,6 +116,8 @@ function DrawerBody({
   const remove = useDeleteTicket();
   const [version, setVersion] = useState(0);
   const [confirming, setConfirming] = useState(false);
+  // A status picked here is not applied: it opens the handoff dialog, and the select stays put until that confirms.
+  const [moveTo, setMoveTo] = useState<string | null>(null);
   const titleFocused = useRef(false);
 
   const boardTickets = useQuery(boardTicketsQuery(ticket.project_slug, ticket.board_slug));
@@ -208,11 +225,7 @@ function DrawerBody({
           <div className="grid grid-cols-2 gap-3">
             <Field label="Status">
               {(id) => (
-                <Select
-                  id={id}
-                  value={ticket.status}
-                  onChange={(e) => save({ status: e.target.value })}
-                >
+                <Select id={id} value={ticket.status} onChange={(e) => setMoveTo(e.target.value)}>
                   {board.statuses.map((s) => (
                     <option key={s} value={s}>
                       {s}
@@ -467,6 +480,14 @@ function DrawerBody({
         <FilesSection ticketKey={ticket.key} />
         <ActivitySection ticket={ticket} />
       </div>
+      {moveTo !== null && (
+        <HandoffDialog
+          key={moveTo}
+          request={{ ticket, board, target: moveTo }}
+          onClose={() => setMoveTo(null)}
+          onDone={() => setMoveTo(null)}
+        />
+      )}
     </>
   );
 }

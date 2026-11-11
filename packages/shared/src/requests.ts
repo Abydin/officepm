@@ -81,6 +81,19 @@ export const UserCreateRequestSchema = z.object({
   email: z.string(),
   name: z.string(),
   password: z.string(),
+  department: z.string().nullish(),
+});
+
+/** POST /api/tickets/:key/handoff. Which fields are required depends on the decision. */
+export const HandoffRequestSchema = z.object({
+  decision: z.string(),
+  to_status: z.string().nullish(),
+  from_status: z.string().nullish(),
+  reason: z.string().nullish(),
+  assignee: z.string().nullish(),
+  department: z.string().nullish(),
+  note: z.string().nullish(),
+  attachment_ids: z.array(z.string()).nullish(),
 });
 
 export const SettingsPatchRequestSchema = z.object({

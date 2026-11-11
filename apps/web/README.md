@@ -141,6 +141,12 @@ Added in 3c (the remaining v1 screens, none of them placeholders now):
   The project page lists the same links read only.
 - **Admin** (`#/admin`, admins only): users, create a user (with the admin flag), reset a password in a dialog, and the
   boards from projects.json read only. The admin flag of an existing user cannot be changed: the server has no endpoint.
+- **Handoff dialog** (`features/handoffs/`): every status change from the UI goes through it, not through `PATCH`: the board
+  (mouse, touch, keyboard drag, Alt+arrows) and the Status field in the ticket. Nothing is applied optimistically, so a
+  cancelled drag leaves the card where it was. The rules (next and previous status, what a Waterfall board allows, the
+  reason on reject) are `planHandoff` and `handoffOptions` in `@officepm/shared`, the same functions the server runs.
+  Attachments are uploaded to the ticket first and removed again if the handoff is then refused. Recipients see a count
+  in the sidebar and top bar and a Handed to you list on My Tickets. Admins edit a person's department on the Admin page.
 - The top bar's sprint picker (v1's), a Docs & Files link under each project in the sidebar and an Admin link for admins. The sidebar is scoped by route: under `/projects/:slug` it shows that one project and an All projects link (`sidebar-nav.tsx`), elsewhere it lists every project.
 
 Phase 4 changed the build, not the screens: the secondary screens load lazily, the e2e suite gained a security spec

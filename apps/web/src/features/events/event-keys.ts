@@ -14,6 +14,9 @@ export function queryKeysForEvent(name: ServerEventName): readonly QueryKey[] {
     case 'ticket.updated':
     case 'ticket.deleted':
       return [qk.tickets.all, qk.dashboard];
+    case 'handoff.created':
+      // The move and the comment arrive as their own events; this one is for the recipient's unread list.
+      return [qk.handoffs.all];
     case 'comment.created':
       return [qk.comments.all, qk.dashboard];
     case 'sprint.created':

@@ -548,3 +548,42 @@ and an All projects link to `/projects`. On Overview, My Tickets, Projects and A
 shows the full grouped list as before. A ticket drawer opened over My Tickets does not
 change the sidebar, because the route did not change. The nav keeps its label
 "Projects and boards", so the e2e selectors that used it still resolve.
+
+Handoff. A status change made in the UI is no longer a bare `PATCH`. The board's moves
+(drag, touch, keyboard drag, Alt+arrows) and the ticket's Status field open a dialog
+(apps/web/src/features/handoffs) and apply nothing until it is confirmed, so cancelling
+a drag needs no rollback. The only paths that change a status from the UI are those two;
+there is no separate "mark done" action, and moving to a done status is the same move.
+The default target is the dropped-on column (or the picked status) when the workflow allows
+it, else the next status; a drop on an earlier column opens on Reject.
+
+- Rules in `@officepm/shared` (`handoff.ts`): `transitionViolation` (moved there from
+  `modules/tickets/transitions.ts`, which re-exports it, so PATCH and the GitHub webhooks
+  still call the one rule), `handoffOptions` (what the dialog offers) and `planHandoff`
+  (what the server accepts). Approve goes to a later status, reject to an earlier one and
+  needs a reason; both go through `transitionViolation`.
+- Server (`modules/handoffs`): `POST /api/tickets/:key/handoff` validates everything first,
+  then writes the status, the assignee, the comment (`source: "handoff"`, written through the
+  comments module's new `record`) and a `ticket_handoffs` row in one transaction, and only then
+  broadcasts `ticket.updated`, `comment.created` and `handoff.created`. Who may use it is who may
+  PATCH a ticket: any signed-in user, because v1 has no per-ticket permissions and this adds none.
+- Attachments reuse `POST /api/tickets/:key/files` unchanged (25 MB, 20 per ticket, blocklist,
+  uuid names). The client uploads first and the handoff names the ids, which must belong to that
+  ticket; a refused handoff has the files it uploaded deleted again. They stay ticket files: v1's
+  file table has no comment link, and the comment lists them by name.
+- Nudge. `ticket_handoffs` holds the recipient (assignee email, or department when no person was
+  named) and `handoff_reads` the per-person read mark, so a department handoff is unread for each
+  member until that member opens it. `GET /api/handoffs/unread` and
+  `POST /api/tickets/:key/handoffs/read` serve the My Tickets list and the sidebar and top bar
+  counts; opening a ticket reads it. The `handoff.created` event carries no note or reason (the
+  stream reaches everyone) and only makes clients refetch their own list.
+- Departments. Users had none, so `users.department` (nullable TEXT) was added, with
+  `GET /api/people` for the pickers (the user list stays admin-only, which the conformance suite
+  pins) and `PATCH /api/users/:id/department` for admins.
+- Migration `0001-handoffs` is additive: the nullable column and two new tables, nothing rewritten.
+  tests/data-compat compared a migrated database with v1's schema exactly; it now sets aside what
+  is declared in `V2_ADDITIONS` (tests/data-compat/support/legacy.ts) and still compares everything
+  else, still boots v1 on the result and still checks no row changed. A later migration declares
+  what it adds there too.
+- The dark theme's `--accent-ink` went from white to a dark ink: white on the dark accent blue is
+  about 3:1, which axe flagged on the dialog's primary button. Light theme unchanged.
