@@ -535,3 +535,16 @@ What remains before merge.
   Squash or keep the phase history is the other half of that decision.
 - Confirm the contact address used in SECURITY.md and CODE_OF_CONDUCT.md, and whether
   GitHub private vulnerability reporting is enabled (SECURITY.md does not claim it is).
+
+Post-merge features: sidebar scope and handoff
+(Added on rewrite/v2 after the first green CI run. Same rule as before: the 104
+conformance tests are untouched and API changes are additive.)
+
+Sidebar scope. The sidebar (apps/web/src/app/layout/sidebar-nav.tsx) is decided by the
+route alone, with `useMatch('/projects/:slug/*')`, the same match the top bar's project
+picker uses. Under it (the project page, a board and its views, Docs & Files, and
+`#/t/KEY`, which redirects to a board) it shows that project's boards and Docs & Files
+and an All projects link to `/projects`. On Overview, My Tickets, Projects and Admin it
+shows the full grouped list as before. A ticket drawer opened over My Tickets does not
+change the sidebar, because the route did not change. The nav keeps its label
+"Projects and boards", so the e2e selectors that used it still resolve.

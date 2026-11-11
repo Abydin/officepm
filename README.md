@@ -88,7 +88,10 @@ assignee, priority, labels, points and due date.
 
 **Projects and boards.** Multiple projects, each with its own boards, each board
 with its own workflow. Boards are declared in `projects.json`, not in the
-database, so changing the team's process is a text edit and a restart.
+database, so changing the team's process is a text edit and a restart. The sidebar
+follows where you are: inside a project it shows only that project (its boards and
+Docs & Files) with an All projects link back, and on Overview, My Tickets, Projects
+and Admin it lists every project grouped.
 
 **Five flows.** A board picks Kanban, Scrum, Scrumban, Shape Up or Waterfall and
 the UI adapts. Waterfall boards refuse to skip a phase. Scrum and Scrumban get

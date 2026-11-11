@@ -141,7 +141,7 @@ Added in 3c (the remaining v1 screens, none of them placeholders now):
   The project page lists the same links read only.
 - **Admin** (`#/admin`, admins only): users, create a user (with the admin flag), reset a password in a dialog, and the
   boards from projects.json read only. The admin flag of an existing user cannot be changed: the server has no endpoint.
-- The top bar's sprint picker (v1's), a Docs & Files link under each project in the sidebar and an Admin link for admins.
+- The top bar's sprint picker (v1's), a Docs & Files link under each project in the sidebar and an Admin link for admins. The sidebar is scoped by route: under `/projects/:slug` it shows that one project and an All projects link (`sidebar-nav.tsx`), elsewhere it lists every project.
 
 Phase 4 changed the build, not the screens: the secondary screens load lazily, the e2e suite gained a security spec
 (the CSP in a real browser), and CI now runs the whole e2e suite, axe included, in a job that a required `ci-required`
