@@ -4,14 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "start": "node dist/main.js",
     "typecheck": "tsc -b tsconfig.json"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.6",
     "@officepm/shared": "workspace:*",
+    "bcrypt": "^6.0.0",
     "better-sqlite3": "^11.10.0",
-    "drizzle-orm": "^0.45.4"
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.17"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^9.6.0",
     "drizzle-kit": "^0.31.11"
   }
