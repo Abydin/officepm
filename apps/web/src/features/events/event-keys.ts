@@ -17,9 +17,11 @@ export function queryKeysForEvent(name: ServerEventName): readonly QueryKey[] {
     case 'comment.created':
       return [qk.comments.all, qk.dashboard];
     case 'sprint.created':
-    case 'sprint.updated':
     case 'sprint.deleted':
       return [qk.sprints.all, qk.dashboard];
+    case 'sprint.updated':
+      // Completing a sprint makes the server create its retro, and announces only the sprint.
+      return [qk.sprints.all, qk.retros.all, qk.dashboard];
     case 'retro.card.created':
       return [qk.retros.all];
   }

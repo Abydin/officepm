@@ -393,3 +393,79 @@ export const TicketLinkCreateSchema = z.object({
   url: z.string().min(1),
 });
 export type TicketLinkCreate = z.infer<typeof TicketLinkCreateSchema>;
+
+// ---- request bodies for sprints, docs, retros and users ------------------------
+// Written from what the v1 server checks, so a form can say no before it asks.
+// The server stays the authority: it answers with its own message either way.
+
+/** The statuses the clients use. The server stores whatever it is sent. */
+export const SPRINT_STATUSES = ['planned', 'active', 'completed'] as const;
+export const SprintStatusSchema = z.enum(SPRINT_STATUSES);
+export type SprintStatus = z.infer<typeof SprintStatusSchema>;
+
+const IsoDateInput = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((d) => !Number.isNaN(new Date(d + 'T00:00:00Z').getTime()), 'not a real date');
+
+/** POST .../boards/:board/sprints. Dates default server-side from the kind's length. */
+export const SprintCreateSchema = z.object({
+  name: z.string().trim().min(1),
+  kind: SprintKindSchema.optional(),
+  start_date: IsoDateInput.nullish(),
+  end_date: IsoDateInput.nullish(),
+  status: SprintStatusSchema.optional(),
+});
+export type SprintCreate = z.infer<typeof SprintCreateSchema>;
+
+/** PATCH /api/sprints/:id. */
+export const SprintPatchSchema = SprintCreateSchema.omit({ kind: true }).partial();
+export type SprintPatch = z.infer<typeof SprintPatchSchema>;
+
+// A scheme check by pattern: the shared package targets no DOM or Node, so it has no URL class.
+const HttpUrl = z.string().regex(/^https?:\/\/\S+$/i, 'url must be http: or https:');
+
+/** POST /api/projects/:slug/docs. */
+export const DocCreateSchema = z.object({
+  title: z.string().trim().min(1),
+  kind: z.string().min(1),
+  url: HttpUrl.nullish(),
+  body: z.string().nullish(),
+});
+export type DocCreate = z.infer<typeof DocCreateSchema>;
+
+/** POST .../boards/:board/retros. */
+export const RetroCreateSchema = z.object({
+  name: z.string().trim().min(1),
+  sprint_id: z.string().nullish(),
+});
+export type RetroCreate = z.infer<typeof RetroCreateSchema>;
+
+/** POST /api/users (admin only). */
+export const UserCreateSchema = z.object({
+  email: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  password: z.string().min(1),
+  is_admin: z.boolean().optional(),
+});
+export type UserCreate = z.infer<typeof UserCreateSchema>;
+
+/** PATCH /api/users/:id/password (admin only). */
+export const PasswordResetSchema = z.object({ password: z.string().min(6) });
+export type PasswordReset = z.infer<typeof PasswordResetSchema>;
+
+/**
+ * GET /api/admin/projects: projects.json as the server loaded it. Only the
+ * fields the admin page reads are required; everything else is passed through.
+ */
+export const ProjectsConfigSchema = z.object({
+  projects: z.array(
+    z.looseObject({
+      slug: z.string(),
+      name: z.string(),
+      description: z.string().optional(),
+      boards: z.array(z.looseObject({ slug: z.string(), name: z.string() })),
+    }),
+  ),
+});
+export type ProjectsConfig = z.infer<typeof ProjectsConfigSchema>;

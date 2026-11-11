@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useLogout } from '@/features/auth/api';
 import { useUser } from '@/features/auth/user-context';
 import { projectsQuery } from '@/features/projects/api';
+import { sprintsQuery } from '@/features/tickets/api';
 import { useTheme } from '@/lib/theme';
 
 const picker =
@@ -26,6 +27,15 @@ export function Topbar({
   const { theme, toggle } = useTheme();
   const match = useMatch('/projects/:slug/*');
   const current = match?.params.slug ?? '';
+  // v1's sprint picker: the board's sprints, and choosing one opens the backlog.
+  const onBoard = useMatch('/projects/:slug/boards/:board/*');
+  const boardSlug = onBoard?.params.board ?? '';
+  const sprints = useQuery({
+    ...sprintsQuery(current, boardSlug),
+    enabled: Boolean(onBoard),
+  });
+  const sprintList = onBoard ? (sprints.data ?? []) : [];
+  const activeSprint = sprintList.find((s) => s.status === 'active') ?? sprintList[0];
 
   return (
     <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line bg-raised px-3 md:gap-3 md:px-4">
@@ -69,6 +79,30 @@ export function Topbar({
           <path d="M1 1l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
+      {activeSprint && (
+        <div className="relative max-md:hidden">
+          <select
+            aria-label="Sprint"
+            title="Sprints on this board. Choosing one opens the backlog."
+            value={activeSprint.id}
+            className={picker}
+            onChange={() => void navigate(`/projects/${current}/boards/${boardSlug}/backlog`)}
+          >
+            {sprintList.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} · {s.status}
+              </option>
+            ))}
+          </select>
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 10 6"
+            className="pointer-events-none absolute top-1/2 right-2.5 size-2.5 -translate-y-1/2 fill-none stroke-dim stroke-[1.6]"
+          >
+            <path d="M1 1l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      )}
       <span className="flex-1" />
       <button
         type="button"

@@ -108,7 +108,7 @@ export function BoardFrame() {
           <NavLink
             key={tab.id}
             to={tab.path}
-            end
+            end={tab.path === ''}
             className={({ isActive }) =>
               cn(
                 '-mb-px border-b-2 px-3 py-2 whitespace-nowrap no-underline',

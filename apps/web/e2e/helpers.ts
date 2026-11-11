@@ -3,10 +3,10 @@ import { expect, type Locator, type Page } from '@playwright/test';
 // Demo login created by legacy/scripts/seed-demo.js, which e2e/serve.mjs runs.
 export const DEMO = { email: 'maya.okafor@officepm.demo', password: 'demo-password' };
 
-export async function signIn(page: Page) {
+export async function signIn(page: Page, who: { email: string; password: string } = DEMO) {
   await page.goto('/');
-  await page.getByLabel('Email').fill(DEMO.email);
-  await page.getByLabel('Password').fill(DEMO.password);
+  await page.getByLabel('Email').fill(who.email);
+  await page.getByLabel('Password').fill(who.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/#\/overview$/);
 }
@@ -45,3 +45,6 @@ export async function keyboardDrag(page: Page, key: string, through: string[]) {
   }
   await page.keyboard.press('Space');
 }
+
+/** Demo users share one password; Sam is not an admin. */
+export const SAM = { email: 'sam.adeyemi@officepm.demo', password: DEMO.password };

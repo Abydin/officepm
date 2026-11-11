@@ -60,6 +60,81 @@ for (const theme of ['dark', 'light'] as const) {
       expect(await violations(page)).toEqual([]);
     });
 
+    test('backlog, then with the Definition of Ready gate open', async ({ page }) => {
+      await page.goto('/#/projects/food/boards/eng/backlog');
+      await expect(page.getByRole('region', { name: 'Sprint 14' })).toBeVisible();
+      await expect(page.getByRole('row', { name: /Order history filters/ })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+
+      // A planned sprint to open the gate on. The seed has none, so make one.
+      const name = `A11y ${theme}`;
+      await page.request.post('/api/projects/food/boards/eng/sprints', { data: { name } });
+      await page.reload();
+      const planned = page.getByRole('region', { name });
+      await planned.getByRole('button', { name: 'Activate' }).click();
+      await expect(planned.getByRole('group', { name: 'Definition of Ready' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('cycles on a Shape Up board', async ({ page }) => {
+      await page.goto('/#/projects/northwind/boards/product/backlog');
+      await expect(page.getByRole('heading', { name: 'Cycles' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('phases on a Waterfall board', async ({ page }) => {
+      await page.goto('/#/projects/acme/boards/eng/backlog');
+      await expect(page.getByRole('heading', { name: 'Phase order' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('scrumban backlog with velocity', async ({ page }) => {
+      await page.goto('/#/projects/food/boards/support/backlog');
+      await expect(page.getByRole('region', { name: 'Velocity' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('epics', async ({ page }) => {
+      await page.goto('/#/projects/food/boards/eng/epics');
+      await expect(page.getByRole('region', { name: /Group ordering/ })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('retros list and one retro', async ({ page }) => {
+      await page.goto('/#/projects/food/boards/eng/retros');
+      await expect(page.getByRole('link', { name: 'Retro: Sprint 13' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+      await page.getByRole('link', { name: 'Retro: Sprint 13' }).click();
+      await expect(page.getByRole('region', { name: 'Went well' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('standup', async ({ page }) => {
+      await page.goto('/#/projects/food/boards/eng/standup');
+      await expect(page.getByRole('region', { name: 'Maya Okafor' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('project page and docs and files', async ({ page }) => {
+      await page.goto('/#/projects/food');
+      await expect(page.getByRole('region', { name: 'Docs & Links' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+      await page.goto('/#/projects/food/docs');
+      await expect(page.getByRole('region', { name: 'Links' })).toBeVisible();
+      await expect(page.getByRole('link', { name: /Ordering API reference/ })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test('admin, and its reset password dialog', async ({ page }) => {
+      await page.goto('/#/admin');
+      await expect(page.getByRole('table', { name: 'Users' })).toBeVisible();
+      await expect(page.getByRole('table', { name: 'Boards' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+      await page.getByRole('button', { name: 'Reset password for Sam Adeyemi' }).click();
+      await expect(page.getByRole('dialog', { name: /Reset password/ })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
     test('my tickets', async ({ page }) => {
       await page.goto('/#/mine');
       await expect(page.getByRole('table')).toBeVisible();

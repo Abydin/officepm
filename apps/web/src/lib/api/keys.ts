@@ -12,6 +12,10 @@ export const qk = {
     list: () => ['projects', 'list'] as const,
     detail: (slug: string) => ['projects', 'detail', slug] as const,
     board: (slug: string, board: string) => ['projects', 'board', slug, board] as const,
+    settings: (slug: string, board: string) => ['projects', 'settings', slug, board] as const,
+    docs: (slug: string) => ['projects', 'docs', slug] as const,
+    files: (slug: string) => ['projects', 'files', slug] as const,
+    config: ['projects', 'config'] as const,
   },
   // Everything about tickets sits under ['tickets'], so the server's ticket events
   // (which invalidate qk.tickets.all) refresh lists, the drawer and My Tickets alike.
@@ -30,10 +34,16 @@ export const qk = {
   sprints: {
     all: ['sprints'] as const,
     list: (slug: string, board: string) => ['sprints', 'list', slug, board] as const,
+    burndown: (id: string) => ['sprints', 'burndown', id] as const,
+    velocity: (slug: string, board: string) => ['sprints', 'velocity', slug, board] as const,
   },
   comments: {
     all: ['comments'] as const,
     list: (key: string) => ['comments', 'list', key] as const,
   },
-  retros: { all: ['retros'] as const },
+  retros: {
+    all: ['retros'] as const,
+    list: (slug: string, board: string) => ['retros', 'list', slug, board] as const,
+    detail: (id: string) => ['retros', 'detail', id] as const,
+  },
 } as const;

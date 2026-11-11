@@ -8,6 +8,14 @@ It runs five workflow methodologies (Kanban, Scrum, Scrumban, Shape Up,
 Waterfall), an opt-in agile layer on any of them, and GitHub webhooks that move
 tickets on PR open, deploy and release, so engineering status updates itself.
 
+> **v2 rewrite (branch `rewrite/v2`, in progress).** The repository is now a pnpm monorepo:
+> `apps/server` (TypeScript on Hono), `apps/web` (React client), `packages/shared` (the Zod contract), with the
+> original v1 kept untouched in `legacy/`. The v2 server passes the same 104 conformance tests as v1 and opens v1's
+> `pm.db` as it is. The v2 web client now has every v1 screen (board, ticket drawer, backlog and sprints, epics,
+> retros, standup, docs and files, admin, overview, My Tickets), with end-to-end and accessibility tests. What is
+> left is hardening, packaging and cutover: see `docs/ARCHITECTURE-PLAN.md` and `apps/web/README.md`.
+> The rest of this file describes v1, whose code is in `legacy/`.
+
 ![Board](docs/board.png)
 
 **Try it in 30 seconds** with a populated demo workspace:

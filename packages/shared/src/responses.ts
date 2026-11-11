@@ -3,9 +3,12 @@
 import { z } from 'zod';
 import {
   CommentSchema,
+  DocSchema,
   DodItemSchema,
   GithubLinkSchema,
+  ProjectFileSchema,
   ProjectSchema,
+  RetroSchema,
   SprintSchema,
   TicketFileSchema,
   TicketLinkSchema,
@@ -48,6 +51,18 @@ export type DodList = z.infer<typeof DodListSchema>;
 /** GET /api/users (admin only). */
 export const UserListSchema = z.array(UserListItemSchema);
 export type UserList = z.infer<typeof UserListSchema>;
+
+/** GET /api/projects/:slug/docs, newest first. */
+export const DocListSchema = z.array(DocSchema);
+export type DocList = z.infer<typeof DocListSchema>;
+
+/** GET /api/projects/:slug/files, newest first. */
+export const ProjectFileListSchema = z.array(ProjectFileSchema);
+export type ProjectFileList = z.infer<typeof ProjectFileListSchema>;
+
+/** GET /api/projects/:slug/boards/:board/retros, newest first. */
+export const RetroListSchema = z.array(RetroSchema);
+export type RetroList = z.infer<typeof RetroListSchema>;
 
 /**
  * Names the server broadcasts on GET /api/events. Each arrives as a named SSE

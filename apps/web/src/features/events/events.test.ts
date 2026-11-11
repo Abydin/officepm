@@ -43,6 +43,10 @@ describe('queryKeysForEvent', () => {
     expect(queryKeysForEvent('sprint.created')).toEqual([qk.sprints.all, qk.dashboard]);
     expect(queryKeysForEvent('retro.card.created')).toEqual([qk.retros.all]);
   });
+
+  it('a sprint update also refreshes retros, because completing one creates its retro', () => {
+    expect(queryKeysForEvent('sprint.updated')).toContain(qk.retros.all);
+  });
 });
 
 describe('useEventStream', () => {

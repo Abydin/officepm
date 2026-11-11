@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { NavLink } from 'react-router';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useUser } from '@/features/auth/user-context';
 import { projectsQuery } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +35,7 @@ function Item({
 /** The projects and boards list. Rendered in the desktop sidebar and, on phones, inside the nav sheet. */
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const projects = useQuery(projectsQuery);
+  const user = useUser();
 
   return (
     <nav aria-label="Projects and boards" className="px-2 pt-3 pb-6">
@@ -46,6 +48,11 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       <Item to="/projects" end onNavigate={onNavigate}>
         Projects
       </Item>
+      {user.isAdmin && (
+        <Item to="/admin" onNavigate={onNavigate}>
+          Admin
+        </Item>
+      )}
 
       {projects.isPending && (
         <div role="status" aria-label="Loading projects" className="mt-4 space-y-2 px-2">
@@ -78,6 +85,9 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
               {board.name}
             </Item>
           ))}
+          <Item to={`/projects/${project.slug}/docs`} onNavigate={onNavigate}>
+            <span className="text-dim">Docs &amp; Files</span>
+          </Item>
         </div>
       ))}
     </nav>

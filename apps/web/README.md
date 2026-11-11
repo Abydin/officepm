@@ -31,7 +31,7 @@ bare `tsc -p apps/web`.
 | `pnpm typecheck`           | Server, shared, web and data-compat types                        |
 | `pnpm test:unit`           | Every package's Vitest suite, web included                       |
 | `pnpm run build:web`       | Production build into `apps/web/dist`                            |
-| `pnpm test:e2e`            | Builds server and client, then the Playwright suite (smoke, board, drawer, axe) |
+| `pnpm test:e2e`            | Builds server and client, then the Playwright suite (a spec per view, plus axe) |
 
 Playwright needs a browser once: `pnpm --filter @officepm/web exec playwright install chromium`.
 The e2e run seeds a throwaway database in the OS temp directory (`e2e/serve.mjs`); it never touches
@@ -47,7 +47,7 @@ The build is shaped to fit: one JS bundle named `app.js`, one `styles.css`, and 
 pnpm run build:web && PM_WEB_DIR=apps/web/dist PM_DATA_DIR=.data node apps/server/dist/main.js
 ```
 
-The cost is no code splitting. Lifting it needs the server to serve `/assets/*` and fall back to
+The cost is no code splitting (about 220 kB of gzipped JavaScript). Lifting it needs the server to serve `/assets/*` and fall back to
 `index.html`; that is a Phase 4 server change.
 
 ## Layout
@@ -57,7 +57,8 @@ src/
   main.tsx              entry: mounts <App>
   index.css             Tailwind, design tokens (v1's colours), light and dark themes
   app/                  wiring only: router, providers, query client, auth gate, layout shell
-  features/<name>/      one folder per product area (auth, overview, projects, events)
+  features/<name>/      one folder per product area (auth, overview, projects, tickets, sprints, retros,
+                        epics, standup, docs, admin, palette, shortcuts, events)
     api.ts              query options and mutations for that area
     *-page.tsx          route components
   components/ui/        shadcn-style primitives (button, input, card, sheet ...), no app knowledge
@@ -92,9 +93,9 @@ server's SSE events are mapped to keys in `features/events/event-keys.ts`; the s
 5. Add one route in `src/app/router.tsx`, and a sidebar or tab link if people need to reach it.
 6. Add a component test using `renderApp` and `stubApi` from `src/test/helpers.tsx`.
 
-## Status (phase 3b)
+## Status (phase 3c)
 
-Built, on top of 3a (login, auth gate, app shell, overview, project list and page, board frame):
+Built in 3b, on top of 3a (login, auth gate, app shell, overview, project list and page, board frame):
 
 - **Board**: one column per status in the board's flow, ticket cards (key, title, priority, assignee, labels,
   points, due, blocked and overdue flags), filters by assignee, label and text (kept in the URL as `?a=`, `?l=`,
@@ -114,8 +115,26 @@ Built, on top of 3a (login, auth gate, app shell, overview, project list and pag
   shortcut list. Shortcuts: `C`, `?`, `G` then `B`/`S`/`R`, `J`/`K`, `Enter`, `E`, `A`.
 - **My Tickets**.
 
-Placeholders, labelled in the UI: Backlog, Epics, Retros and Standup tabs, and Docs and Files (3c). Not
-started: Admin (3c). The 3b and 3c split is a working assumption, not a decision.
+Added in 3c (the remaining v1 screens, none of them placeholders now):
+
+- **Backlog, Cycles, Phases** (`#/projects/:slug/boards/:board/backlog`): one view for every flow that has time-boxes,
+  named after the flow. Create a sprint, cycle, cooldown or phase (dates start from today plus the kind's default
+  length); activate one through the board's Definition of Ready checklist (one active per board, the server's refusal
+  is shown); mark one completed, which makes the server create its retro and shows a link to it; burndown for active and
+  completed ones; velocity on Scrumban. Tickets move between sprints with a select on each row, and back to the
+  backlog (new: v1 only had a sprint id field in the drawer). Waterfall also shows its phase order with counts.
+- **Epics**: each epic with its done count and progress, and its tickets; each opens in the drawer.
+- **Retros** (`.../retros`, `.../retros/:retroId`): the list, and one retro with its three columns and a box to add a card to each.
+  v1 has no voting and no card edit or delete in its UI, so there are none here.
+- **Standup**: tickets grouped by person with status, blockers and when each last changed.
+- **Docs & Files** (`#/projects/:slug/docs`): links and files, with the server's limits shown. Delete (with an inline confirm) is new.
+  The project page lists the same links read only.
+- **Admin** (`#/admin`, admins only): users, create a user (with the admin flag), reset a password in a dialog, and the
+  boards from projects.json read only. The admin flag of an existing user cannot be changed: the server has no endpoint.
+- The top bar's sprint picker (v1's), a Docs & Files link under each project in the sidebar and an Admin link for admins.
+
+Rough edges, neither of which v1 had either: the command palette has no entries for Docs & Files or Admin (the sidebar has them), and
+the top bar's sprint picker, like v1's, only opens the backlog; it does not scroll to the chosen sprint.
 
 Assignee pickers: the server's user list is admin-only, so for everyone else the list is the signed-in person
 plus whoever already appears on the board's tickets; anyone else is added by typing their email.
@@ -126,6 +145,8 @@ There is no "create project" screen because the server has no such endpoint: pro
 ## Accessibility
 
 `e2e/a11y.spec.ts` runs axe (WCAG 2.0/2.1 A and AA rules) over the board, the drawer, the palette, the open
-assignee picker, the shortcut list and My Tickets, in both themes, and expects zero violations. Automated rules
+assignee picker, the shortcut list, My Tickets, and every 3c view (backlog with its Definition of Ready gate open, cycles,
+phases, velocity, epics, retros, one retro, standup, the project page, docs and files, admin with the reset dialog open),
+in both themes, and expects zero violations. Automated rules
 find a fraction of real problems: the keyboard drag and the screen-reader announcements were exercised by hand
 and by test, not by an assistive technology.
