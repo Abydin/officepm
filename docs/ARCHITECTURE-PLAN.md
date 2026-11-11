@@ -486,9 +486,12 @@ What remains before merge.
 - CI first ran on GitHub on 2026-11-11 (branch rewrite/v2). Passed: conformance (104 on
   Node 22 and 24, against both servers), unit and data-compat, lint and typecheck, web,
   the docker image build (including the amd64 source build of better-sqlite3) and audit.
-  web-e2e failed twice before any test ran, at `playwright install --with-deps`, because
-  apt on the ubuntu-latest (26.04) runner could not resolve the Ubuntu mirrors. That job
-  is now pinned to ubuntu-24.04 (the supported image); the result of that run is pending. Once it is green,
+  web-e2e failed three times before any test ran, at `playwright install --with-deps`,
+  on both ubuntu-latest (26.04) and ubuntu-24.04, because apt on the runner could not
+  resolve the Ubuntu mirrors (runner apt DNS, not the image). The step now installs only
+  the browser, without `--with-deps`, so apt never runs; if Chromium then lacks a system
+  library, the fallback is the pinned official Playwright container image. The result of
+  that run is pending. Once it is green,
   mark `ci-required` as a required check in the repository settings (a setting code
   cannot make).
 - Update the portfolio card (and the repository description) for v2.

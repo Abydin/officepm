@@ -126,7 +126,12 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @officepm/web exec playwright install --with-deps chromium
+      # No --with-deps: apt on the runner cannot resolve the Ubuntu mirrors (failed on both
+      # ubuntu-latest and ubuntu-24.04), so only the browser is downloaded and apt never runs.
+      # If Chromium then reports a missing system library, the fallback is to run this job in
+      # the official Playwright container image (mcr.microsoft.com/playwright, pinned by
+      # version and digest), which bundles those dependencies.
+      - run: pnpm --filter @officepm/web exec playwright install chromium
       - run: pnpm run test:e2e
       - name: Keep the Playwright report when the suite fails
         if: failure()
