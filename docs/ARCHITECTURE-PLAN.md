@@ -483,10 +483,14 @@ What remains before merge.
 - Flip the conformance default to the v2 server (tests/conformance/helpers.js and the
   `test:conformance` script), only together with the previous item. The harness is not
   to be edited as part of this phase.
-- CI has never run on GitHub. Every job, including the new docker job and the amd64 build
-  of better-sqlite3 from source, was verified only locally. Push the branch to a
-  scratch ref first and read the results, then mark `ci-required` as a required check
-  in the repository settings (a setting code cannot make).
+- CI first ran on GitHub on 2026-11-11 (branch rewrite/v2). Passed: conformance (104 on
+  Node 22 and 24, against both servers), unit and data-compat, lint and typecheck, web,
+  the docker image build (including the amd64 source build of better-sqlite3) and audit.
+  web-e2e failed twice before any test ran, at `playwright install --with-deps`, because
+  apt on the ubuntu-latest (26.04) runner could not resolve the Ubuntu mirrors. That job
+  is now pinned to ubuntu-24.04 (the supported image); the result of that run is pending. Once it is green,
+  mark `ci-required` as a required check in the repository settings (a setting code
+  cannot make).
 - Update the portfolio card (and the repository description) for v2.
 - Merge strategy against the open pull request #1 (feat/demo-seed, "Demo seed data and a
   redesigned UI"): it carries v1 work that rewrite/v2 supersedes. Decide whether to close
