@@ -1,0 +1,39 @@
+# OfficePM v2 on one machine.
+#
+#   cp .env.example .env     (set PM_TOKEN and ADMIN_PASSWORD)
+#   docker compose up -d --build
+#
+# Data (pm.db and uploads/) lives in the volume named officepm-data, not in the image,
+# so rebuilding or upgrading the image never touches it.
+services:
+  officepm:
+    build: .
+    image: officepm:v2
+    init: true
+    restart: unless-stopped
+    ports:
+      # Loopback by default. Set PM_HOST_BIND=0.0.0.0 to serve the office LAN, or keep the default
+      # and put Tailscale serve or a reverse proxy in front (see ROLLOUT.md).
+      - '${PM_HOST_BIND:-127.0.0.1}:${PM_HOST_PORT:-3000}:3000'
+    environment:
+      # PM_DATA_DIR and PM_WEB_DIR are already set in the image (/data and the built client).
+      PM_TOKEN: ${PM_TOKEN:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@officepm.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PM_TRUST_PROXY: ${PM_TRUST_PROXY:-}
+    volumes:
+      - officepm-data:/data
+      # To edit boards without rebuilding, uncomment, then restart:
+      # - ./projects.json:/app/projects.json:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  officepm-data:
+    # A fixed name, so the backup and migration recipes in the docs do not depend on the project directory.
+    name: officepm-data

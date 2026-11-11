@@ -45,6 +45,12 @@ export function createApp(ctx: AppContext): Hono<AppEnv> {
   const sprints = createSprintService(ctx);
 
   const api = new Hono<AppEnv>({ strict: false });
+  // Liveness for the container healthcheck and uptime checks: no session needed, and it
+  // reads the database so a server that cannot reach pm.db reports itself unhealthy.
+  api.get('/health', (c) => {
+    ctx.db.raw.prepare('SELECT 1').get();
+    return c.json({ ok: true });
+  });
   api.route('/', authRoutes(ctx));
   api.route('/', projectRoutes(ctx));
   api.route('/', ticketRoutes(ctx));

@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
-// Demo login created by legacy/scripts/seed-demo.js, which e2e/serve.mjs runs.
+// Demo login created by the v2 demo seeder (apps/server/src/seed), which e2e/serve.mjs runs.
 export const DEMO = { email: 'maya.okafor@officepm.demo', password: 'demo-password' };
 
 export async function signIn(page: Page, who: { email: string; password: string } = DEMO) {

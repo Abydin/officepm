@@ -1,72 +1,88 @@
 # OfficePM
 
-Self-hosted project management for a small office. **One Node process, one SQLite
-file, five runtime dependencies, and no build step.** Open `index.html` in the
-repo and you are looking at the whole frontend.
+Self-hosted project management for a small office. One server process, one SQLite
+file, and a React client the server hands out itself. No cloud services, no
+accounts with anyone, nothing to pay for.
 
 It runs five workflow methodologies (Kanban, Scrum, Scrumban, Shape Up,
 Waterfall), an opt-in agile layer on any of them, and GitHub webhooks that move
 tickets on PR open, deploy and release, so engineering status updates itself.
 
-> **v2 rewrite (branch `rewrite/v2`, in progress).** The repository is now a pnpm monorepo:
-> `apps/server` (TypeScript on Hono), `apps/web` (React client), `packages/shared` (the Zod contract), with the
-> original v1 kept untouched in `legacy/`. The v2 server passes the same 104 conformance tests as v1 and opens v1's
-> `pm.db` as it is. The v2 web client now has every v1 screen (board, ticket drawer, backlog and sprints, epics,
-> retros, standup, docs and files, admin, overview, My Tickets), with end-to-end and accessibility tests. What is
-> left is packaging and cutover: see `docs/ARCHITECTURE-PLAN.md` and `apps/web/README.md`.
->
-> **Phase 4 hardening (v2 server):** request bodies are capped while they stream (413 over 2 MB, or 25 MB for an
-> upload), malformed JSON is a 400, failed logins are throttled per address and per email (429), event streams close
-> when a password is reset, every response carries a Content-Security-Policy and the other defensive headers, every
-> POST and PATCH body is type-checked against the shared Zod schemas with v1's messages kept, CI webhooks obey the
-> same Waterfall transition rule as a person, and `pnpm run backup` takes a consistent SQLite snapshot. Not done, and
-> why, is in the Phase 4 notes. Behind a reverse proxy set `PM_TRUST_PROXY=1` so the login throttle sees the real
-> client address.
-> The rest of this file describes v1, whose code is in `legacy/`.
-
 ![Board](docs/board.png)
 
-**Try it in 30 seconds** with a populated demo workspace:
+> **This is v2**, a TypeScript rewrite: `apps/server` (Hono, Drizzle, SQLite),
+> `apps/web` (React), `packages/shared` (the Zod contract both sides import). The
+> original v1 is kept untouched in `legacy/` as the oracle the rewrite is tested
+> against, and v2 opens a v1 `pm.db` as it is. Status of the rewrite and what is
+> left before it replaces v1 is in [docs/ARCHITECTURE-PLAN.md](docs/ARCHITECTURE-PLAN.md).
+
+## Quick start
+
+You need Node 22 or newer and pnpm 10 (`corepack enable` picks the version from
+`package.json`, or `npm install -g pnpm@10`). The native modules (`better-sqlite3`,
+`bcrypt`) come as prebuilt binaries where one exists and compile otherwise, which
+needs Python, make and a C++ compiler.
+
+### From source, with the demo workspace
 
 ```bash
-npm install && npm run seed
-node server.js          # then open http://localhost:3000
-# log in as maya.okafor@officepm.demo / demo-password
+pnpm install
+pnpm seed          # demo data into .data/ (about 30 tickets, 6 users, 7 boards)
+pnpm dev           # builds, then serves the app on http://localhost:3000
+# sign in as maya.okafor@officepm.demo / demo-password
 ```
 
-The seed adds about 30 tickets across all seven boards, an active sprint, two
-finished ones, three epics, a retro and six demo users. It refuses to run on a
-database that already has tickets, so it cannot overwrite real work. Demo
-password is public, so only seed a machine you do not expose.
+`pnpm dev` and `pnpm seed` use `.data/` in the repository, never a `pm.db` sitting
+in the repo root. The demo password is public, so only seed a machine you do not
+expose. For live reload of the client, leave `pnpm dev` running and start
+`pnpm dev:web` in a second terminal: Vite serves the client on
+http://localhost:5173 and proxies `/api` to port 3000.
 
-## The constraint
+Without the seed, the first start creates an admin account instead. Set
+`ADMIN_EMAIL` and `ADMIN_PASSWORD` first, or the server prints a generated password
+once, which you must copy down.
 
-The interesting part of this project is what is not in it.
+### From source, for real use
 
-| | |
-|---|---|
-| Runtime dependencies | 5 (`express`, `better-sqlite3`, `cookie-parser`, `multer`, `bcrypt`) |
-| Build step | none, the browser loads the ES module directly |
-| Frontend framework | Preact + htm, 3 KB, vendored as one local file |
-| Bundler, transpiler, CSS framework | none |
-| Database | one SQLite file, `better-sqlite3`, synchronous |
-| Cloud services | none, it runs on a machine in the office |
-| Total application code | about 3,700 lines across `server.js`, `schema.js`, `app.js` and `styles.css` |
-| Tests | 104, on `node --test`, no test framework dependency |
+```bash
+pnpm install && pnpm build
+cp .env.example .env     # set PM_TOKEN, ADMIN_PASSWORD, and PM_DATA_DIR to a directory of its own
+PM_DATA_DIR=/var/lib/officepm ADMIN_PASSWORD=choose-one PM_TOKEN=a-long-random-string pnpm start
+```
 
-No CDN, no analytics, no third-party network calls. The only code the browser
-loads is this application's own, plus the vendored 3 KB Preact and htm runtime,
-served from disk. The backend is one file you can read start to finish in under
-an hour. That is the point: a tool a small team relies on should be one a single
-person can still hold in their head two years later.
+`pnpm build` compiles the server and bundles the client; `pnpm start` serves the
+bundle from `apps/web/dist`. Leaving `PM_DATA_DIR` unset puts `pm.db` in the
+repository root, where v1 kept it. Set it. `ROLLOUT.md` has the systemd unit.
+
+### With Docker
+
+```bash
+cp .env.example .env     # set PM_TOKEN and ADMIN_PASSWORD
+docker compose up -d --build
+curl http://127.0.0.1:3000/api/health      # {"ok":true}
+```
+
+The image is a multi-stage build on `node:24-bookworm-slim` (pinned by digest),
+runs as the unprivileged `node` user with a read-only root filesystem, and has a
+healthcheck. `pm.db` and `uploads/` live in the volume `officepm-data`, so
+rebuilding never touches them. The port is published on `127.0.0.1` only; see the
+config table to change that. To load the demo workspace into a fresh volume, run
+this before the first `up`:
+
+```bash
+docker compose run --rm officepm node apps/server/dist/seed-main.js
+```
+
+Seeding creates the demo users, so the first-boot admin is then not created. Sign
+in as Maya, who is an admin.
 
 ## What it does
 
-**Boards you can drag.** Move a ticket by dragging it to another column, with
-the card jumping at once and snapping back with the reason if the board refuses
-the move. From the keyboard, focus a card and press `Alt` plus an arrow key. On
-a phone a status menu on the card does the same. Cards show assignee, priority,
-labels, points and due date.
+**Boards you can drag.** Move a ticket by dragging it to another column, with the
+card jumping at once and snapping back with the reason if the board refuses the
+move. From the keyboard, focus a card, press Space, choose a column with Left and
+Right, press Space again. On a phone a long press picks the card up. Cards show
+assignee, priority, labels, points and due date.
 
 ![Overview dashboard](docs/overview.png)
 
@@ -76,13 +92,12 @@ database, so changing the team's process is a text edit and a restart.
 
 **Five flows.** A board picks Kanban, Scrum, Scrumban, Shape Up or Waterfall and
 the UI adapts. Waterfall boards refuse to skip a phase. Scrum and Scrumban get
-sprints, burndown and velocity. Shape Up gets 6-week cycles and 2-week
-cooldowns.
+sprints, burndown and velocity. Shape Up gets 6-week cycles and 2-week cooldowns.
 
 **An agile layer, opt in per board.** Epics and stories, acceptance criteria,
 Definition of Done and Definition of Ready, retros created automatically when a
-sprint completes, a standup view, and blockers. A team that does not want any of
-it is not shown any of it.
+sprint completes, a standup view, and blockers. A team that does not want any of it
+is not shown any of it.
 
 ![Ticket drawer](docs/ticket-drawer.png)
 
@@ -90,7 +105,8 @@ it is not shown any of it.
 moves its ticket to Code Review and posts a comment, a deploy moves it to QA or
 Done depending on environment, and a release moves everything named in the
 changelog. Ticket keys are read out of branch names and commit messages. Boards
-without `has_github` are never touched by CI.
+without `has_github` are never touched by CI. On a Waterfall board a webhook obeys
+the same no-skipping rule as a person.
 
 ![GitHub events on a ticket](docs/ticket-github.png)
 
@@ -98,100 +114,200 @@ without `has_github` are never touched by CI.
 
 ![Backlog](docs/backlog.png)
 
-**Docs, links and file uploads** scoped to a project or a ticket, with real
-limits (25 MB per file, 20 per ticket, 100 per project), an extension blocklist,
-uuid filenames on disk, and downloads that always serve as an attachment and
-always require a session.
+**Docs, links and file uploads** scoped to a project or a ticket, with limits (25 MB
+per file, 20 per ticket, 100 per project), an extension blocklist, uuid filenames on
+disk, and downloads that always serve as an attachment and always require a session.
 
 **Real-time.** Server-Sent Events, so a ticket someone else moves appears
 immediately without polling.
 
-**Keyboard first.** `Cmd+K` command palette, `/` to search, `J` and `K` to move
-through tickets, `Enter` to open, `E` to edit, `A` to assign to yourself, `G`
-then `B`, `S` or `R` to jump. `?` lists them all.
+**Keyboard first.** `Ctrl/Cmd+K` command palette, `/` to search, `J` and `K` to
+move through tickets, `Enter` to open, `E` to edit, `A` to assign to yourself, `G`
+then `B`, `S` or `R` to jump, `C` to create. `?` lists them all. Light and dark
+themes, and a layout that works on a phone.
 
-## Running it
-
-Node 20 or newer.
-
-```bash
-npm install
-cp .env.example .env
-# edit .env and set PM_TOKEN to a long random string
-node --env-file=.env server.js
-```
-
-Open `http://localhost:3000`. On the first boot against an empty database the
-server creates an admin user and either uses `ADMIN_PASSWORD` from `.env` or
-prints a generated one to the terminal once. Copy it down immediately.
-
-Projects and boards come from `projects.json`. The server validates it on
-startup and refuses to boot on malformed JSON, a duplicate board prefix, an
-unknown flow or a project with no boards, telling you which one and why. A
-half-configured server is worse than one that will not start.
-
-Optional environment variables: `PM_DATA_DIR` puts `pm.db` and `uploads/` on a
-separate volume, `PM_PROJECTS_FILE` points at a config elsewhere. Both default
-to the code directory.
-
-## Tests
-
-```bash
-npm test
-```
-
-104 tests on Node's built-in test runner. They boot a real server in a child
-process against a throwaway data directory and talk to it over HTTP, because the
-parts most worth testing here (session cookies, multipart uploads,
-`Content-Disposition`, webhook tokens) only exist at that boundary.
-
-The security tests are regression tests for bugs this codebase actually had, and
-each one was verified by reverting its fix and confirming the test fails. Among
-them: session expiry compared as a raw string against SQLite's datetime format,
-which accepted an expired session whenever the date part happened to match; a
-password reset that left the user's existing sessions alive; and an extension
-blocklist that `evil.exe.` walked straight through, because `path.extname`
-returns `'.'` for a name with a trailing dot.
+![Light theme](docs/board-light.png)
 
 ## How it is put together
 
+```mermaid
+flowchart LR
+  subgraph browser [Browser]
+    web["apps/web<br/>React 19, TanStack Query,<br/>React Router, Tailwind"]
+  end
+  gh["GitHub Actions"]
+  subgraph server ["apps/server (one Node process)"]
+    mw["middleware<br/>security headers, body caps,<br/>JSON parsing"]
+    mods["modules/*<br/>router + service each:<br/>auth, tickets, sprints, retros,<br/>comments, attachments, github,<br/>reports, projects, users, events, static"]
+    db["db/<br/>Drizzle + better-sqlite3,<br/>migrator"]
+  end
+  shared["packages/shared<br/>Zod schemas, flow table"]
+  files[("PM_DATA_DIR<br/>pm.db, uploads/")]
+  cfg[/"projects.json"/]
+  web -- "JSON over HTTP, SSE" --> mw
+  gh -- "POST /api/github/*" --> mw
+  mw --> mods --> db --> files
+  mods -- "reads at start" --> cfg
+  mods -- "serves apps/web/dist" --> web
+  shared -. "imported by both" .- web
+  shared -.- mods
+```
+
+The server is a Hono app. Each feature is a folder under
+`apps/server/src/modules/` holding a router (parse the request, call the service,
+shape the response) and a service (the rules, and the SQL). The database is the one
+v1 created: the migrator in `apps/server/src/db/` applies additive migrations and
+records them in a table of its own, so a v1 `pm.db` opens unchanged. The client
+validates every response against the same Zod schemas the server tests use, so a
+handler that drifts from the contract fails a test rather than a screen.
+
+### Project layout
+
 | Path | What |
 |---|---|
-| `server.js` | All backend logic: auth, API, GitHub webhooks, SSE |
-| `schema.js` | The SQLite schema and its in-place migrations, shared with the seed script |
-| `scripts/seed-demo.js` | `npm run seed`, fills an empty database with a demo workspace |
-| `index.html`, `app.js`, `styles.css` | The entire frontend |
-| `vendor/htm-preact.module.js` | Vendored Preact + htm runtime |
+| `apps/server/src/` | The server: `app.ts` (middleware and routes), `main.ts` (entry), `config.ts`, `projects-config.ts`, `bootstrap.ts`, `backup.ts`, `seed-main.ts` |
+| `apps/server/src/modules/<name>/` | One feature each: `routes.ts` and `service.ts` |
+| `apps/server/src/http/` | Cross-cutting HTTP code: auth guard, body and size limits, login throttle, security headers, validation |
+| `apps/server/src/db/` | Drizzle schema, migrations, migrator, upload path resolver |
+| `apps/server/src/seed/` | The demo workspace (`demo-data.ts`) and the code that writes it |
+| `apps/web/src/` | The client, one folder per product area under `features/`; see `apps/web/README.md` |
+| `apps/web/e2e/` | Playwright specs, one per view, plus axe and the security headers |
+| `packages/shared/src/` | The contract: entity, request and response schemas, and the flow capability table |
+| `tests/conformance/` | The 104 HTTP-level tests, run against either server |
+| `tests/data-compat/` | Proof that v2 opens v1 databases and that v1 still runs on them afterwards |
+| `legacy/` | The frozen v1 server and client |
 | `projects.json` | Project and board definitions, the source of truth, not the database |
-| `test/` | 104 tests |
-| `PRD.md` | The specification this was built against |
-| `ROLLOUT.md` | Hosting, Tailscale, GitHub Actions, backups, and a user guide |
+| `Dockerfile`, `docker-compose.yml` | The container image and a one-machine deployment |
+| `PRD.md` | The specification v1 was built against |
+| `ROLLOUT.md` | Hosting, Tailscale, GitHub Actions, backups, upgrades, and a user guide |
 
-`PRD.md` is the actual product specification, including its explicit out-of-scope
-list. The code was built against it section by section. There are two deliberate
-deviations from its pinned dependency versions, both recorded in the git history
-with their reasons: `multer` 2.4.0 against a pinned `1.4.5-lts.1`, and `bcrypt`
-6.x against a pinned `5.1.1`, the latter because 5.1.1 reaches a vulnerable
-`tar` through `node-pre-gyp` and `npm audit` should be clean on a project whose
-whole claim is a small dependency tree.
+## Configuration
 
-## Deploying it
+All configuration is environment variables.
 
-`ROLLOUT.md` covers running it under systemd on an office machine, reaching it
-remotely over Tailscale with nothing exposed to the public internet, wiring up
-GitHub Actions safely, nightly backups, and a plain-language guide for everyone
-else in the office.
+| Variable | Default | What |
+|---|---|---|
+| `PORT` | `3000` | Port the server listens on (inside the container too; the compose file maps it) |
+| `PM_DATA_DIR` | repository root (image: `/data`) | Directory holding `pm.db` and `uploads/`. Set it to a directory of its own. |
+| `PM_PROJECTS_FILE` | `projects.json` in the repository root | Project and board definitions. The server refuses to start if it is malformed. |
+| `PM_WEB_DIR` | `legacy/` (`pnpm start`: `apps/web/dist`; image: `/app/apps/web/dist`) | Directory the client is served from. The raw default is the v1 client. |
+| `PM_TOKEN` | empty | Shared secret for the GitHub webhooks (`x-pm-token` header). Empty disables them. |
+| `ADMIN_EMAIL` | `admin@officepm.local` | First-boot admin, used only while the users table is empty |
+| `ADMIN_PASSWORD` | generated, printed once | Password for that admin |
+| `PM_TRUST_PROXY` | off | `1` or `true` behind a reverse proxy, so the login throttle uses the address in `X-Forwarded-For`. Leave off when reached directly: a client could forge it. |
+| `NODE_ENV` | `development` | Only printed at startup |
+| `PM_HOST_BIND`, `PM_HOST_PORT` | `127.0.0.1`, `3000` | docker compose only: where the container is published on the host |
 
-Backups are one command. On v1: `tar czf pm-backup-$(date +%F).tar.gz pm.db projects.json uploads/`. On the v2
-server use `pnpm run backup [dir]` instead: it copies the database with SQLite's backup API, which is safe while the
-server is writing (a tar of a live WAL database can be torn), and writes the same `pm-backup-DATE.tar.gz` layout.
+`pnpm start` loads no `.env` file. Put variables in the shell, or run
+`node --env-file=.env apps/server/dist/main.js` (then set `PM_WEB_DIR` too).
+docker compose reads `.env` itself.
+
+## Commands
+
+| Command | What |
+|---|---|
+| `pnpm build` | Compile the server and bundle the client |
+| `pnpm start` | Run the server (`PM_DATA_DIR` as given) |
+| `pnpm dev` | Build, then run against `.data/` |
+| `pnpm dev:web` | Vite dev server for the client on :5173 |
+| `pnpm seed` | Demo workspace into `$PM_DATA_DIR` (default `.data/`) |
+| `pnpm backup [dir]` | Consistent snapshot of the data directory, safe while the server runs |
+| `pnpm lint`, `pnpm format:check`, `pnpm typecheck` | Static checks |
+| `pnpm test` | Conformance (v1), unit, data-compat |
+| `pnpm test:conformance:v2` | The conformance suite against the v2 server |
+| `pnpm test:e2e` | Browser suite (needs `pnpm --filter @officepm/web exec playwright install chromium` once) |
+
+## Tests
+
+Four layers, each aimed at a different failure.
+
+- **Conformance, the oracle.** `tests/conformance/` holds 104 tests on Node's
+  built-in runner. They boot a real server in a child process against a throwaway
+  data directory and talk to it over HTTP, because what is worth testing (session
+  cookies, multipart uploads, `Content-Disposition`, webhook tokens) only exists at
+  that boundary. The server under test is chosen by `OFFICEPM_SERVER_CMD` and the
+  seed script by `OFFICEPM_SEED_CMD`. By default they run against v1 in `legacy/`,
+  which defines the behaviour; `pnpm test:conformance:v2` runs the same 104 against
+  the v2 server, and both must pass all 104. CI fails if the count is anything else.
+  These tests are the contract and are never weakened to make a change pass.
+- **Unit** (`pnpm test:unit`, Vitest). The server in-process with every response checked
+  against the shared Zod schemas, the hardening rules, the backup and the seeder
+  (which is also compared row for row with v1's seed script), the shared package, and the
+  web client's components.
+- **Data compatibility** (`pnpm test:data-compat`). Builds databases with v1's own
+  code (empty, seeded, an old column shape, uploads moved to another directory),
+  opens them with v2, and checks that no row changed, that v1 still boots and logs
+  in on the result, and that stored upload paths resolve.
+- **End to end** (`pnpm test:e2e`). A real browser against a seeded v2 server:
+  every screen's flows, the security headers, and axe over each view in both
+  themes with zero violations.
+
+Several security tests are regression tests for bugs this codebase actually had,
+and each was verified by reverting its fix and confirming the test fails.
+
+## Security notes
+
+OfficePM is built for a trusted network such as an office LAN or a Tailscale
+tailnet. It is not hardened for the public internet; do not port-forward it.
+
+- Passwords are bcrypt (10 rounds). Sessions are random ids stored in SQLite and
+  last 7 days, in an `HttpOnly`, `SameSite=Lax` cookie that is `Secure` when the
+  proxy reports `X-Forwarded-Proto: https`. There is no self-signup; an admin
+  creates every account. Resetting a password closes that user's event streams.
+- There is no separate CSRF token: writes rely on the `SameSite=Lax` cookie.
+- Failed logins are throttled per address (30) and per email (8) in a 15 minute
+  window, answered 429, before any password work. An unknown email costs one decoy
+  compare, so timing does not reveal which accounts exist. The state is in memory
+  and resets on restart. Anyone can lock a named account out for up to 15 minutes
+  by failing its login on purpose.
+- Request bodies are capped while they stream (2 MB, 25 MB for an upload). Every
+  POST and PATCH body is validated against the shared schemas.
+- Every response carries a Content-Security-Policy (scripts only from the origin
+  plus the hash of the one inline script), `X-Frame-Options: DENY`,
+  `nosniff`, `Referrer-Policy: no-referrer`, and the other headers listed in the Phase 4
+  notes. `Strict-Transport-Security` is sent only when the proxy reports https.
+- Uploads are blocklisted by extension, stored under uuid names outside the web
+  root, and served only to signed-in users, always as a download. An upload is held in memory
+  while it is parsed, so one can use about 25 MB of RAM at once.
+- The webhook token is compared in constant time. A webhook can only move a ticket
+  on a board that sets `has_github`.
+- The container runs as a non-root user with a read-only root filesystem and no
+  capabilities.
+- `pnpm audit` is part of CI and reports nothing at moderate or above at the time of
+  writing, helped by two `pnpm.overrides` for dev-tool dependencies.
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+## Upgrading from v1
+
+v2 reads v1's `pm.db`, `uploads/` and `projects.json` as they are, and its migration
+only adds one table, so v1 can still run on the database afterwards. Back up first.
+The whole procedure, including Docker and the rollback, is in
+[docs/MIGRATING-FROM-V1.md](docs/MIGRATING-FROM-V1.md).
+
+## Backups
+
+On v2, `pnpm backup [dir]` copies the database with SQLite's backup API (consistent
+even while the server writes), checks the copy, and writes `pm-backup-DATE.tar.gz`
+holding `pm.db`, `projects.json` and `uploads/`. In Docker:
+
+```bash
+docker compose exec officepm node apps/server/dist/backup-main.js /data/backups
+docker compose cp officepm:/data/backups/. ./backups
+```
+
+`ROLLOUT.md` has the nightly cron entry and the restore steps.
 
 ## What this deliberately is not
 
 No custom field builder, no workflow automation builder, no Gantt charts, no
 multi-tenant SaaS, no mobile app, no SSO, no email or Slack notifications, no
-rich text editor, no per-project permissions. v1 is for a small office where
-everyone logged in can see every project, on purpose.
+rich text editor, no per-project permissions. Everyone logged in can see every
+project, on purpose. `PRD.md` section 16 has the full list. The rule there still
+applies: add these only when a real team complains about a real problem, not before.
 
-`PRD.md` section 16 has the full list. The rule there still applies: add these
-only when a real team complains about a real problem, not before.
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). This project follows the
+[Contributor Covenant](CODE_OF_CONDUCT.md). Licensed under the MIT licence, see
+[LICENSE](LICENSE).

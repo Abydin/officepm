@@ -1,4 +1,4 @@
-// Starts the v2 server for the end-to-end run: a fresh demo database in a temp
+// Starts the v2 server for the end-to-end run: a fresh demo database (the v2 seeder, apps/server/src/seed) in a temp
 // directory (never the repo's pm.db or .data), serving the built web client.
 // Run `pnpm run test:e2e` from the repo root, which builds both first.
 import { execFileSync } from 'node:child_process';
@@ -12,7 +12,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'officepm-e2e-'));
 process.on('exit', () => fs.rmSync(dataDir, { recursive: true, force: true }));
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(0));
 
-execFileSync(process.execPath, [path.join(repo, 'legacy/scripts/seed-demo.js')], {
+execFileSync(process.execPath, [path.join(repo, 'apps/server/dist/seed-main.js')], {
   env: { ...process.env, PM_DATA_DIR: dataDir },
   stdio: 'inherit',
 });

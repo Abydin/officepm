@@ -67,7 +67,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
+      - run: pnpm run build:server
       - name: Run conformance suite against the v2 server and assert the test count
         shell: bash
         env:
@@ -150,6 +150,32 @@ jobs:
             apps/web/test-results
           retention-days: 7
 
+  # The container image: built (never pushed), then started to prove it boots, serves the built
+  # client and answers its own healthcheck route. Compiles the native modules on Node 24.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build the image
+        run: docker build --tag officepm:ci .
+      - name: Boot it and check health and the client
+        shell: bash
+        run: |
+          docker run --detach --name officepm-ci --publish 127.0.0.1:3000:3000 \
+            --env ADMIN_PASSWORD=ci-admin-password officepm:ci
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3000/api/health && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3000/api/health | grep -q '"ok":true' || { docker logs officepm-ci; exit 1; }
+          curl -sf http://127.0.0.1:3000/ | grep -q '<title>OfficePM</title>' || { docker logs officepm-ci; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
+            -d '{"email":"admin@officepm.local","password":"ci-admin-password"}' http://127.0.0.1:3000/api/login)
+          [ "$code" = 200 ] || { echo "login returned $code"; docker logs officepm-ci; exit 1; }
+      - name: Show the container log when a step fails
+        if: failure()
+        run: docker logs officepm-ci || true
+
   # Known vulnerabilities in the lockfile. Kept out of ci-required on purpose: a new
   # advisory should raise a flag, not block an unrelated pull request.
   audit:
@@ -165,7 +191,7 @@ jobs:
   # job above (except audit) passed, so adding a job here is how it becomes required.
   ci-required:
     if: always()
-    needs: [lint-typecheck, conformance, conformance-v2, unit-and-data-compat, web, web-e2e]
+    needs: [lint-typecheck, conformance, conformance-v2, unit-and-data-compat, web, web-e2e, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every required job succeeded

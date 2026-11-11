@@ -15,7 +15,7 @@ pnpm dev            # terminal 1: the v2 server on :3000 (demo data: PM_DATA_DIR
 pnpm dev:web        # terminal 2: Vite on :5173, proxying /api to the server
 ```
 
-Seed demo data once with `PM_DATA_DIR=.data node legacy/scripts/seed-demo.js`, then sign in as
+Seed demo data once with `pnpm seed` (it writes to `.data`), then sign in as
 `maya.okafor@officepm.demo` / `demo-password`. If the server runs on another port, start Vite with
 `PM_API_URL=http://localhost:3010`.
 

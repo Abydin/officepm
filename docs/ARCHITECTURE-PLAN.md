@@ -368,3 +368,84 @@ Web.
 - Bundle size. 217 kB gzipped on first load. What is left is react-dom, react-router, zod
   and TanStack Query; zod/mini and dropping tailwind-merge are the remaining levers,
   each with the cost recorded above.
+
+Phase 5 notes: docs, Docker and demo
+
+Scope. A demo seeder for v2, a container image, and the documents an outside
+contributor or evaluator needs to clone, run and understand the project. Nothing in
+tests/conformance or legacy/ was changed, and the conformance default stays on legacy.
+
+Demo seeder (apps/server/src/seed, seed-main.ts). `pnpm seed` writes the same
+workspace as legacy/scripts/seed-demo.js (30 tickets across the seven boards, 6 users,
+four sprints, a retro, checklists, links, docs, a GitHub link) through the v2 migrator,
+so the schema is v2's own. The content lives in seed/demo-data.ts, copied from the v1
+script. Safety: PM_DATA_DIR must be set (otherwise the data directory would default to
+the repository root, where a v1 pm.db lives); a database that has tickets is refused
+always, since the key counters would collide; a data directory that already has users is
+refused unless --allow-non-empty is given. It writes only to PM_DATA_DIR. Proof: a unit
+test seeds a temp directory, signs in over the app and reads the tickets back, and
+compares the result with the v1 script's output on boards, users, counters, tickets,
+sprints, comments, checklists, links, docs, retro, GitHub rows and schema (ids and
+dates differ by design, so those are compared as present or absent); the comparison
+fails if one ticket title is changed. The conformance seed test also passes against
+the new seeder through OFFICEPM_SEED_CMD, and the e2e launcher now uses it. The
+data-compat suite still builds its seeded fixture with the v1 script, on purpose: its
+point is a database v1 itself made.
+
+Scripts. `pnpm build` now builds the server and the client (it used to build only the
+server, so `pnpm install && pnpm build && pnpm start` served the v1 client). The old
+behaviour is `pnpm build:server`, which conformance:v2 and CI use. `pnpm start` defaults
+PM_WEB_DIR to apps/web/dist; `pnpm dev` builds everything and runs on .data. The raw
+default of PM_WEB_DIR in config.ts is still legacy/, because the v2 conformance run
+depends on a client being there and removing legacy/ is a separate decision.
+
+Health route. GET /api/health (no session, reads the database, 500 if it cannot) was
+added for the container healthcheck. It is outside the v1 contract; no conformance test
+covers it, and hardening/health tests do.
+
+Docker. Multi-stage Dockerfile on node:24-bookworm-slim pinned to the index digest
+(multi-platform, resolved with docker buildx imagetools inspect). Node 24 is viable but
+better-sqlite3 11.10 has no Node 24 prebuilt binary, so it compiles from source in the
+build stages (python3, make and g++ are installed there only, not in the runtime image);
+bcrypt uses a prebuilt binary. The cost is a slower build, not a failure. Three stages
+feed the runtime: production dependencies of the server only, the compiled server and
+shared package, and the built client. Runs as the node user, read-only root filesystem,
+all capabilities dropped, a node-based healthcheck on /api/health, PM_DATA_DIR=/data
+as a volume, and PM_WEB_DIR pointing at the built client. docker-compose.yml publishes
+on 127.0.0.1 by default and names the volume officepm-data so the backup and migration
+recipes do not depend on the project directory. Built and run locally on Docker
+20.10.17 (linux/arm64): health 200, the built client served, admin and demo login,
+a file upload, data surviving down and up, backup and restore through the recipes in
+ROLLOUT.md, and a v1 database mounted into the volume. Not run: linux/amd64 (only the
+digest is multi-platform, the build itself was arm64), and a Linux bind mount owned by
+another uid. CI gained a `docker` job that builds the image without pushing it and
+boots it (health, client, login); it uses only the already pinned checkout action and is
+part of ci-required.
+
+Docs. README.md rewritten for v2 with refreshed screenshots (taken from the running v2
+app with a one-off Playwright script against a seeded temporary server, 1440x900),
+CONTRIBUTING.md, CODE_OF_CONDUCT.md (Contributor Covenant 2.1, fetched from the
+upstream repository, contact set to the maintainer's address, excluded from Prettier so it
+stays verbatim), SECURITY.md, issue and pull request templates, docs/MIGRATING-FROM-V1.md
+and an updated ROLLOUT.md. docs/board-scrolled.png and docs/before/ are v1 images no
+longer referenced by the README and were left in place.
+
+What remains before merge.
+
+- Decide legacy/ removal. It is the conformance oracle and the data-compat fixture
+  builder; deleting it means moving the seeded fixture and the 104 tests to something
+  that does not need v1 (for example a recorded fixture), so it is a separate decision.
+- Flip the conformance default to the v2 server (tests/conformance/helpers.js and the
+  `test:conformance` script), only together with the previous item. The harness is not
+  to be edited as part of this phase.
+- CI has never run on GitHub. Every job, including the new docker job and the amd64 build
+  of better-sqlite3 from source, was verified only locally. Push the branch to a
+  scratch ref first and read the results, then mark `ci-required` as a required check
+  in the repository settings (a setting code cannot make).
+- Update the portfolio card (and the repository description) for v2.
+- Merge strategy against the open pull request #1 (feat/demo-seed, "Demo seed data and a
+  redesigned UI"): it carries v1 work that rewrite/v2 supersedes. Decide whether to close
+  it, or to land the rewrite as the default branch and cherry-pick anything still wanted.
+  Squash or keep the phase history is the other half of that decision.
+- Confirm the contact address used in SECURITY.md and CODE_OF_CONDUCT.md, and whether
+  GitHub private vulnerability reporting is enabled (SECURITY.md does not claim it is).

@@ -1,0 +1,23 @@
+# Keep the build context to source: no installs, build output, local data or secrets.
+.git
+.github
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+.data
+pm.db
+pm.db-*
+uploads
+.env
+.env.*
+!.env.example
+*.log
+coverage
+playwright-report
+test-results
+apps/web/playwright-report
+apps/web/test-results
+.DS_Store
+docs

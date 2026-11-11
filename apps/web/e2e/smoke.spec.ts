@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-// Demo login created by legacy/scripts/seed-demo.js, which e2e/serve.mjs runs.
+// Demo login created by the v2 demo seeder (apps/server/src/seed), which e2e/serve.mjs runs.
 const DEMO = { email: 'maya.okafor@officepm.demo', password: 'demo-password' };
 
 test('signs in against the seeded server and shows the overview', async ({ page }) => {
