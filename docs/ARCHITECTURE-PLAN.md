@@ -489,9 +489,10 @@ What remains before merge.
   web-e2e failed three times before any test ran, at `playwright install --with-deps`,
   on both ubuntu-latest (26.04) and ubuntu-24.04, because apt on the runner could not
   resolve the Ubuntu mirrors (runner apt DNS, not the image). The step now installs only
-  the browser, without `--with-deps`, so apt never runs; if Chromium then lacks a system
-  library, the fallback is the pinned official Playwright container image. The result of
-  that run is pending. Once it is green,
+  the browser, without `--with-deps`, so apt never runs. With that change (commit
+  800ed38) every job passed, including web-e2e (58 tests with the axe checks) and the
+  `ci-required` aggregate. If a later runner image lacks a system library for Chromium,
+  the fallback is the pinned official Playwright container image. What remains is to
   mark `ci-required` as a required check in the repository settings (a setting code
   cannot make).
 - Update the portfolio card (and the repository description) for v2.
