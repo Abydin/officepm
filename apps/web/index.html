@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>OfficePM</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236a8dff'/%3E%3Ctext x='16' y='22' font-family='sans-serif' font-size='18' font-weight='800' text-anchor='middle' fill='white'%3EO%3C/text%3E%3C/svg%3E"
+    />
+    <script>
+      // Apply the saved theme before first paint so there is no flash. Same key
+      // as the v1 client, so an existing preference carries over.
+      try {
+        document.documentElement.setAttribute(
+          'data-theme',
+          localStorage.getItem('pm_theme') || 'dark',
+        );
+      } catch (e) {
+        /* storage blocked: keep the default */
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+import type { QueryKey } from '@tanstack/react-query';
+import type { ServerEventName } from '@officepm/shared';
+import { qk } from '@/lib/api';
+
+/**
+ * Which cached queries a server event makes stale. The dashboard summarises
+ * tickets, sprints and comments, so every one of those events touches it.
+ * Exhaustive over ServerEventName: adding an event to the shared list fails
+ * the type check here until someone decides what it invalidates.
+ */
+export function queryKeysForEvent(name: ServerEventName): readonly QueryKey[] {
+  switch (name) {
+    case 'ticket.created':
+    case 'ticket.updated':
+    case 'ticket.deleted':
+      return [qk.tickets.all, qk.dashboard];
+    case 'comment.created':
+      return [qk.comments.all, qk.dashboard];
+    case 'sprint.created':
+    case 'sprint.updated':
+    case 'sprint.deleted':
+      return [qk.sprints.all, qk.dashboard];
+    case 'retro.card.created':
+      return [qk.retros.all];
+  }
+}

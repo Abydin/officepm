@@ -12,3 +12,5 @@ docs/before/
 PRD.md
 ROLLOUT.md
 README.md
+playwright-report/
+test-results/

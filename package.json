@@ -12,14 +12,17 @@
     "test:conformance:v2": "pnpm run build && OFFICEPM_SERVER_CMD=apps/server/dist/main.js node --test tests/conformance/*.test.js",
     "test": "pnpm run test:conformance && pnpm run test:unit && pnpm run test:data-compat",
     "lint": "eslint .",
-    "typecheck": "tsc -b packages/shared apps/server apps/web && tsc --noEmit -p tests/data-compat",
+    "typecheck": "tsc -b packages/shared apps/server && pnpm --filter @officepm/web typecheck && tsc --noEmit -p tests/data-compat",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "pnpm run build && PM_DATA_DIR=.data node apps/server/dist/main.js",
     "test:unit": "vitest run --config vitest.config.mts",
     "test:data-compat": "vitest run --config tests/data-compat/vitest.config.ts",
-    "build": "tsc -b packages/shared apps/server apps/web",
-    "start": "node apps/server/dist/main.js"
+    "build": "tsc -b packages/shared apps/server",
+    "start": "node apps/server/dist/main.js",
+    "build:web": "tsc -b packages/shared && pnpm --filter @officepm/web build",
+    "dev:web": "tsc -b packages/shared && pnpm --filter @officepm/web dev",
+    "test:e2e": "pnpm run build && pnpm run build:web && pnpm --filter @officepm/web test:e2e"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -30,6 +33,8 @@
   "devDependencies": {
     "@types/node": "^22.20.5",
     "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.14.0",
     "prettier": "^3.9.10",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.2",

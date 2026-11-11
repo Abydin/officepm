@@ -1,0 +1,167 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens. The values are v1's (legacy/styles.css) so the two clients
+ * look alike. Components use the Tailwind names below, never raw colours, so
+ * the dark and light themes are one set of rules.
+ */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root {
+  --c-gray: #8a8f98;
+  --c-blue: #5b86f5;
+  --c-purple: #9b6dff;
+  --c-amber: #e0a030;
+  --c-cyan: #3ec9c9;
+  --c-green: #3fb950;
+  --c-red: #e5534b;
+  --p-urgent: #e5534b;
+  --p-high: #e8803a;
+  --p-medium: #d9a441;
+  --p-low: #7f8aa0;
+}
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0b0d11;
+  --bg-raised: #12151b;
+  --bg-hover: #1a1e27;
+  --lane: #0f1218;
+  --field: #0b0d11;
+  --border: #222733;
+  --border-strong: #353c4d;
+  --text: #e8eaef;
+  --text-dim: #98a0ae;
+  --accent: #6a8dff;
+  --accent-ink: #fff;
+  --accent-soft: rgba(106, 141, 255, 0.14);
+  --focus-ring: #7d9bff;
+  --red-soft: rgba(229, 83, 75, 0.14);
+  --amber-soft: rgba(224, 160, 48, 0.14);
+  --green-soft: rgba(63, 185, 80, 0.14);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f7f6f2;
+  --bg-raised: #ffffff;
+  --bg-hover: #efeee9;
+  --lane: #ecebe4;
+  --field: #ffffff;
+  --border: #e0ded5;
+  --border-strong: #c9c6ba;
+  --text: #16181d;
+  --text-dim: #5f6573;
+  --accent: #3a62e0;
+  --accent-ink: #fff;
+  --accent-soft: rgba(58, 98, 224, 0.1);
+  --focus-ring: #2f55cc;
+  --red-soft: rgba(207, 52, 44, 0.1);
+  --amber-soft: rgba(176, 116, 8, 0.12);
+  --green-soft: rgba(30, 140, 55, 0.12);
+  --c-red: #cf342c;
+  --c-green: #1f8d38;
+  --c-amber: #b07408;
+  --c-blue: #3a62e0;
+  --c-cyan: #14899a;
+  --p-medium: #b8861e;
+  --shadow: 0 8px 24px rgba(20, 22, 28, 0.14);
+}
+
+@theme inline {
+  --font-sans: -apple-system, 'Segoe UI', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  --color-bg: var(--bg);
+  --color-raised: var(--bg-raised);
+  --color-hover: var(--bg-hover);
+  --color-lane: var(--lane);
+  --color-field: var(--field);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-fg: var(--text);
+  --color-dim: var(--text-dim);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-ring: var(--focus-ring);
+  --color-ok: var(--c-green);
+  --color-ok-soft: var(--green-soft);
+  --color-err: var(--c-red);
+  --color-err-soft: var(--red-soft);
+  --color-warn: var(--c-amber);
+  --color-warn-soft: var(--amber-soft);
+  --color-info: var(--c-blue);
+  --color-cyan: var(--c-cyan);
+  --color-purple: var(--c-purple);
+  --color-gray: var(--c-gray);
+
+  --shadow-pop: var(--shadow);
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-fade: fade 0.15s ease-out;
+  --animate-slide: slide 0.18s ease-out;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes slide {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.01em;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  /* Tailwind v4 resets borders to currentColor; keep v1's quiet hairline. */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
