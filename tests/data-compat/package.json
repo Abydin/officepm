@@ -1,0 +1,15 @@
+{
+  "name": "@officepm/data-compat-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Proves v2 migrations and path resolution against databases that v1 created.",
+  "devDependencies": {
+    "@officepm/shared": "workspace:*",
+    "@types/bcrypt": "^6.0.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^11.10.0",
+    "zod": "^4.6.7"
+  }
+}

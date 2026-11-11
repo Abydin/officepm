@@ -9,12 +9,14 @@
   },
   "scripts": {
     "test:conformance": "node --test tests/conformance/*.test.js",
-    "test": "node --test tests/conformance/*.test.js",
+    "test": "pnpm run test:conformance && pnpm run test:unit && pnpm run test:data-compat",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit -p packages/shared && tsc --noEmit -p apps/server && tsc --noEmit -p apps/web",
+    "typecheck": "tsc -b packages/shared apps/server apps/web && tsc --noEmit -p tests/data-compat",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dev": "node -e \"console.log('dev arrives in P1 (server) and P3 (web). Until then run the frozen v1 server with: node legacy/server.js'); process.exit(0)\""
+    "dev": "node -e \"console.log('dev arrives in P1 (server) and P3 (web). Until then run the frozen v1 server with: node legacy/server.js'); process.exit(0)\"",
+    "test:unit": "vitest run --config vitest.config.mts",
+    "test:data-compat": "vitest run --config tests/data-compat/vitest.config.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -27,6 +29,7 @@
     "eslint": "^10.14.0",
     "prettier": "^3.9.10",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.72.2"
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
   }
 }
