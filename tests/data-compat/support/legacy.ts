@@ -1,6 +1,6 @@
-// Everything that touches the frozen v1 code: its schema, its seed script and its
-// server. Every spawn is pinned to a throwaway PM_DATA_DIR, because with it unset
-// v1 falls back to the repo root and would open the real pm.db and uploads/.
+// Everything that touches the frozen v1 code (frozen-v1/): its schema, its seed script
+// and its server. Every spawn is pinned to a throwaway PM_DATA_DIR, because with it unset
+// v1 falls back to a directory inside the repository instead of a temp one.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -14,7 +14,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, '../../..');
 const require = createRequire(import.meta.url);
 
-export const legacySchema = require(path.join(REPO_ROOT, 'legacy', 'schema.js')) as {
+const FROZEN_V1 = path.join(here, '..', 'frozen-v1');
+// v1 resolves projects.json relative to its own location, which is no longer the repo root.
+const PROJECTS_FILE = path.join(REPO_ROOT, 'projects.json');
+
+export const legacySchema = require(path.join(FROZEN_V1, 'schema.js')) as {
   SCHEMA_SQL: string;
   migrate(db: Database.Database): void;
 };
@@ -36,18 +40,14 @@ function assertThrowaway(dir: string): string {
   return dir;
 }
 
-/** Runs legacy/scripts/seed-demo.js into an empty data dir. */
+/** Runs frozen-v1/scripts/seed-demo.js into an empty data dir. */
 export function seedDemo(dataDir: string): void {
   assertThrowaway(dataDir);
-  const res = spawnSync(
-    process.execPath,
-    [path.join(REPO_ROOT, 'legacy', 'scripts', 'seed-demo.js')],
-    {
-      cwd: REPO_ROOT,
-      env: { ...process.env, PM_DATA_DIR: dataDir },
-      encoding: 'utf8',
-    },
-  );
+  const res = spawnSync(process.execPath, [path.join(FROZEN_V1, 'scripts', 'seed-demo.js')], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, PM_DATA_DIR: dataDir, PM_PROJECTS_FILE: PROJECTS_FILE },
+    encoding: 'utf8',
+  });
   if (res.status !== 0) throw new Error('seed-demo failed: ' + res.stdout + res.stderr);
 }
 
@@ -68,16 +68,17 @@ export interface LegacyServer {
   stop(): Promise<void>;
 }
 
-/** Boots `node legacy/server.js` against dataDir and waits until it answers. */
+/** Boots `node frozen-v1/server.js` against dataDir and waits until it answers. */
 export async function startLegacy(dataDir: string, admin = BOOTSTRAP_ADMIN): Promise<LegacyServer> {
   assertThrowaway(dataDir);
   const port = await freePort();
-  const child = spawn(process.execPath, [path.join(REPO_ROOT, 'legacy', 'server.js')], {
+  const child = spawn(process.execPath, [path.join(FROZEN_V1, 'server.js')], {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
       PORT: String(port),
       PM_DATA_DIR: dataDir,
+      PM_PROJECTS_FILE: PROJECTS_FILE,
       PM_TOKEN: 'compat-pm-token',
       NODE_ENV: 'test',
       ADMIN_EMAIL: admin.email,

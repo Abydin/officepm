@@ -42,7 +42,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     projectsFile: env.PM_PROJECTS_FILE
       ? path.resolve(env.PM_PROJECTS_FILE)
       : path.join(REPO_ROOT, 'projects.json'),
-    webDir: env.PM_WEB_DIR ? path.resolve(env.PM_WEB_DIR) : path.join(REPO_ROOT, 'legacy'),
+    webDir: env.PM_WEB_DIR
+      ? path.resolve(env.PM_WEB_DIR)
+      : path.join(REPO_ROOT, 'apps', 'web', 'dist'),
     pmToken: env.PM_TOKEN || '',
     nodeEnv: env.NODE_ENV || 'development',
     trustProxy: env.PM_TRUST_PROXY === '1' || env.PM_TRUST_PROXY === 'true',

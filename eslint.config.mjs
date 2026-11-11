@@ -5,7 +5,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   {
     ignores: [
-      'legacy/**',
+      'tests/data-compat/frozen-v1/**',
       '**/dist/**',
       '**/node_modules/**',
       '.data/**',

@@ -90,7 +90,9 @@ download it.
 The migration is additive, so v1 runs on a database v2 has touched; the data-compat
 suite (`pnpm test:data-compat`) checks exactly this on seeded, old-shaped and
 moved-upload databases: no row changes, v1 boots, logs in, and keeps allocating keys
-from the same counter.
+from the same counter. The v1 code that suite runs lives in `tests/data-compat/frozen-v1/`.
+The rest of v1 (its client and docs) was removed from the tree; it is in git history, last
+present at commit `5b25841`, if you need to start v1 again for a rollback.
 
 - **Roll back and keep what was entered in v2:** stop v2 and start v1 with its data
   directory set to the one v2 used (`PM_DATA_DIR=/var/lib/officepm`). For Docker,

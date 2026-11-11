@@ -1,7 +1,8 @@
 OfficePM v2 rewrite: phase plan
 
-Branch: rewrite/v2. Layout: legacy/ (frozen v1), apps/server, apps/web,
-packages/shared, tests/conformance. Package manager pnpm 10, Node 22+.
+Branch: rewrite/v2. Layout: apps/server, apps/web, packages/shared, tests/conformance,
+tests/data-compat (with the frozen v1 files it needs in frozen-v1/). v1 itself (legacy/)
+was removed in the cutover below; commit 5b25841 is the last one that contains it. Package manager pnpm 10, Node 22+.
 
 P0 Scaffold and conformance harness. Move v1 into legacy/, turn test/ into
 tests/conformance/ driven by OFFICEPM_SERVER_CMD (default legacy/server.js)
@@ -475,14 +476,46 @@ stays verbatim), SECURITY.md, issue and pull request templates, docs/MIGRATING-F
 and an updated ROLLOUT.md. The unreferenced v1 images (docs/board-scrolled.png and
 docs/before/) have been deleted.
 
+Cutover notes: legacy/ removed
+
+Done after Phase 5 (the two items that used to head "What remains before merge").
+Commit 5b25841 is the last commit that contains legacy/ (server, client, schema, seed
+script and its README); `git show 5b25841:legacy/<file>` or a worktree at that commit
+brings v1 back.
+
+- Conformance. `tests/conformance/helpers.js` now defaults to the compiled v2 server
+  (apps/server/dist/main.js) and the v2 seeder (apps/server/dist/seed-main.js), and takes
+  better-sqlite3 from apps/server. `pnpm test:conformance` builds the server first, so it
+  works from a clean checkout. `test:conformance:v2` is gone. CI has one `conformance` job
+  (Node 22 and 24) that asserts exactly 104 tests and 104 passing; the old v1 job and the
+  `conformance-v2` job were merged into it, and `ci-required` lists the remaining jobs.
+  The 104 tests themselves are unchanged.
+- Client directory. The raw default of PM_WEB_DIR is now apps/web/dist, so it matches
+  `pnpm start` and the image. The conformance suite never requests the client, so it does
+  not need the web build.
+- Data-compat. These tests genuinely need v1: they build databases with v1's own schema
+  code and seed script, and boot the v1 server on the migrated result (rollback safety, and
+  uploads written by v1). The choice was between keeping a minimal frozen copy and
+  reducing the suite to what v2 can verify alone. Reducing it would drop exactly the
+  claims that matter most: "v1 still runs after v2 touched it" needs a live v1 server, and
+  a database v1 itself wrote (with uploads) is only fresh if v1's own code makes it. A
+  recorded .db file could stand in for the second, never for the first.
+  So three files were moved unchanged into tests/data-compat/frozen-v1/ (server.js,
+  schema.js, scripts/seed-demo.js, byte for byte, git records them as renames), and
+  express, cookie-parser and multer became devDependencies of the data-compat package
+  (same locked versions as before). Nothing else of v1 was kept: not the client, vendor
+  directory or its README. Coverage lost: none of the data-compat assertions changed. What
+  it costs: about 1,900 lines of unmaintained v1 JavaScript stay in the tree as a fixture,
+  excluded from lint and format, plus three test-only dependencies. The v2 seeder
+  comparison test and the schema baseline test now read the same frozen copies.
+- Wiring. The `legacy` entry is gone from pnpm-workspace.yaml, the ESLint and Prettier
+  ignores point at frozen-v1 instead, and the Dockerfile no longer copies legacy/package.json.
+  README, CONTRIBUTING, SECURITY, the PR template, .env.example and
+  docs/MIGRATING-FROM-V1.md were updated. The older phase notes above still describe legacy/
+  as it was at the time and are left as the historical record.
+
 What remains before merge.
 
-- Decide legacy/ removal. It is the conformance oracle and the data-compat fixture
-  builder; deleting it means moving the seeded fixture and the 104 tests to something
-  that does not need v1 (for example a recorded fixture), so it is a separate decision.
-- Flip the conformance default to the v2 server (tests/conformance/helpers.js and the
-  `test:conformance` script), only together with the previous item. The harness is not
-  to be edited as part of this phase.
 - CI first ran on GitHub on 2026-11-11 (branch rewrite/v2). Passed: conformance (104 on
   Node 22 and 24, against both servers), unit and data-compat, lint and typecheck, web,
   the docker image build (including the amd64 source build of better-sqlite3) and audit.

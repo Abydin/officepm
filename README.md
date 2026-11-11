@@ -12,9 +12,9 @@ tickets on PR open, deploy and release, so engineering status updates itself.
 
 > **This is v2**, a TypeScript rewrite: `apps/server` (Hono, Drizzle, SQLite),
 > `apps/web` (React), `packages/shared` (the Zod contract both sides import). The
-> original v1 is kept untouched in `legacy/` as the oracle the rewrite is tested
-> against, and v2 opens a v1 `pm.db` as it is. Status of the rewrite and what is
-> left before it replaces v1 is in [docs/ARCHITECTURE-PLAN.md](docs/ARCHITECTURE-PLAN.md).
+> original v1 is no longer in the tree (it lives in git history, last at commit `5b25841`),
+> and v2 opens a v1 `pm.db` as it is. Status of the rewrite and what is left before it
+> replaces v1 is in [docs/ARCHITECTURE-PLAN.md](docs/ARCHITECTURE-PLAN.md).
 
 ## Quick start
 
@@ -173,9 +173,8 @@ handler that drifts from the contract fails a test rather than a screen.
 | `apps/web/src/` | The client, one folder per product area under `features/`; see `apps/web/README.md` |
 | `apps/web/e2e/` | Playwright specs, one per view, plus axe and the security headers |
 | `packages/shared/src/` | The contract: entity, request and response schemas, and the flow capability table |
-| `tests/conformance/` | The 104 HTTP-level tests, run against either server |
-| `tests/data-compat/` | Proof that v2 opens v1 databases and that v1 still runs on them afterwards |
-| `legacy/` | The frozen v1 server and client |
+| `tests/conformance/` | The 104 HTTP-level tests, run against the compiled v2 server |
+| `tests/data-compat/` | Proof that v2 opens v1 databases and that v1 still runs on them afterwards; `frozen-v1/` holds the three v1 files it needs |
 | `projects.json` | Project and board definitions, the source of truth, not the database |
 | `Dockerfile`, `docker-compose.yml` | The container image and a one-machine deployment |
 | `PRD.md` | The specification v1 was built against |
@@ -190,7 +189,7 @@ All configuration is environment variables.
 | `PORT` | `3000` | Port the server listens on (inside the container too; the compose file maps it) |
 | `PM_DATA_DIR` | repository root (image: `/data`) | Directory holding `pm.db` and `uploads/`. Set it to a directory of its own. |
 | `PM_PROJECTS_FILE` | `projects.json` in the repository root | Project and board definitions. The server refuses to start if it is malformed. |
-| `PM_WEB_DIR` | `legacy/` (`pnpm start`: `apps/web/dist`; image: `/app/apps/web/dist`) | Directory the client is served from. The raw default is the v1 client. |
+| `PM_WEB_DIR` | `apps/web/dist` (image: `/app/apps/web/dist`) | Directory the built client is served from |
 | `PM_TOKEN` | empty | Shared secret for the GitHub webhooks (`x-pm-token` header). Empty disables them. |
 | `ADMIN_EMAIL` | `admin@officepm.local` | First-boot admin, used only while the users table is empty |
 | `ADMIN_PASSWORD` | generated, printed once | Password for that admin |
@@ -199,7 +198,7 @@ All configuration is environment variables.
 | `PM_HOST_BIND`, `PM_HOST_PORT` | `127.0.0.1`, `3000` | docker compose only: where the container is published on the host |
 
 `pnpm start` loads no `.env` file. Put variables in the shell, or run
-`node --env-file=.env apps/server/dist/main.js` (then set `PM_WEB_DIR` too).
+`node --env-file=.env apps/server/dist/main.js`.
 docker compose reads `.env` itself.
 
 ## Commands
@@ -213,29 +212,31 @@ docker compose reads `.env` itself.
 | `pnpm seed` | Demo workspace into `$PM_DATA_DIR` (default `.data/`) |
 | `pnpm backup [dir]` | Consistent snapshot of the data directory, safe while the server runs |
 | `pnpm lint`, `pnpm format:check`, `pnpm typecheck` | Static checks |
-| `pnpm test` | Conformance (v1), unit, data-compat |
-| `pnpm test:conformance:v2` | The conformance suite against the v2 server |
+| `pnpm test` | Conformance, unit, data-compat |
+| `pnpm test:conformance` | The 104 conformance tests against the v2 server (builds it first) |
 | `pnpm test:e2e` | Browser suite (needs `pnpm --filter @officepm/web exec playwright install chromium` once) |
 
 ## Tests
 
 Four layers, each aimed at a different failure.
 
-- **Conformance, the oracle.** `tests/conformance/` holds 104 tests on Node's
+- **Conformance, the contract.** `tests/conformance/` holds 104 tests on Node's
   built-in runner. They boot a real server in a child process against a throwaway
   data directory and talk to it over HTTP, because what is worth testing (session
   cookies, multipart uploads, `Content-Disposition`, webhook tokens) only exists at
-  that boundary. The server under test is chosen by `OFFICEPM_SERVER_CMD` and the
-  seed script by `OFFICEPM_SEED_CMD`. By default they run against v1 in `legacy/`,
-  which defines the behaviour; `pnpm test:conformance:v2` runs the same 104 against
-  the v2 server, and both must pass all 104. CI fails if the count is anything else.
+  that boundary. They were written against v1 and defined its behaviour; since the
+  cutover they run against the compiled v2 server and the v2 seeder by default
+  (`pnpm test:conformance` builds the server first), and all 104 must pass. The server
+  under test can be changed with `OFFICEPM_SERVER_CMD` and the seed script with
+  `OFFICEPM_SEED_CMD`. CI fails if the count is anything else, or if any test fails.
   These tests are the contract and are never weakened to make a change pass.
 - **Unit** (`pnpm test:unit`, Vitest). The server in-process with every response checked
   against the shared Zod schemas, the hardening rules, the backup and the seeder
-  (which is also compared row for row with v1's seed script), the shared package, and the
+  (which is also compared row for row with v1's seed script, kept in `tests/data-compat/frozen-v1/`), the shared package, and the
   web client's components.
 - **Data compatibility** (`pnpm test:data-compat`). Builds databases with v1's own
-  code (empty, seeded, an old column shape, uploads moved to another directory),
+  code, kept verbatim in `tests/data-compat/frozen-v1/` (empty, seeded, an old column shape,
+  uploads moved to another directory),
   opens them with v2, and checks that no row changed, that v1 still boots and logs
   in on the result, and that stored upload paths resolve.
 - **End to end** (`pnpm test:e2e`). A real browser against a seeded v2 server:

@@ -45,7 +45,7 @@ export function emptyFixture(): Fixture {
   };
 }
 
-/** (a) A real v1 database: legacy schema.js migrate(), then legacy seed-demo.js. */
+/** (a) A real v1 database: frozen-v1 schema.js migrate(), then frozen-v1 seed-demo.js. */
 export function seededFixture(): Fixture {
   const dataDir = makeTempDir('seeded');
   seedDemo(dataDir);
@@ -87,7 +87,7 @@ function insertOldWorkspace(db: Database.Database): void {
 }
 
 /**
- * (b) The pre-column shape. legacy/schema.js keeps the three tickets columns OUT
+ * (b) The pre-column shape. frozen-v1/schema.js keeps the three tickets columns OUT
  * of its CREATE TABLE and adds them with ALTER TABLE in migrate(). So running only
  * SCHEMA_SQL and skipping migrate() gives, by construction, the database an
  * install from before those columns existed would have.

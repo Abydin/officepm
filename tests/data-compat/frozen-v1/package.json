@@ -1,0 +1,6 @@
+{
+  "name": "officepm-frozen-v1",
+  "private": true,
+  "type": "commonjs",
+  "description": "Frozen v1 server, schema and demo seed. Test fixture only: not a workspace package and not maintained."
+}

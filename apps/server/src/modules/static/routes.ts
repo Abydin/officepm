@@ -34,8 +34,7 @@ function fileResponse(file: string, cacheControl = 'public, max-age=0'): Respons
 }
 
 /**
- * The browser client, served from `webDir` (PM_WEB_DIR). Until the v2 web app
- * lands this is the v1 client in legacy/, which is why the default points there.
+ * The browser client, served from `webDir` (PM_WEB_DIR, default apps/web/dist).
  * Never serves uploads/: only three fixed files and the vendor and assets directories.
  */
 export function staticRoutes(ctx: AppContext) {

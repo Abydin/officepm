@@ -1,8 +1,8 @@
 @import 'tailwindcss';
 
 /*
- * Design tokens. The values are v1's (legacy/styles.css) so the two clients
- * look alike. Components use the Tailwind names below, never raw colours, so
+ * Design tokens. The values are v1's (its styles.css, kept in git
+ * history at 5b25841) so the two clients look alike. Components use the Tailwind names below, never raw colours, so
  * the dark and light themes are one set of rules.
  */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));

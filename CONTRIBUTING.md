@@ -25,14 +25,13 @@ Playwright needs a browser once: `pnpm --filter @officepm/web exec playwright in
 
 ## Commands
 
-| Command                                            | What                                                  |
-| -------------------------------------------------- | ----------------------------------------------------- |
-| `pnpm lint`, `pnpm format:check`, `pnpm typecheck` | Static checks. `pnpm format` fixes formatting.        |
-| `pnpm test:unit`                                   | Vitest: server, shared package, web components        |
-| `pnpm test:conformance`                            | The 104 HTTP tests against the v1 oracle in `legacy/` |
-| `pnpm test:conformance:v2`                         | The same 104 against the v2 server                    |
-| `pnpm test:data-compat`                            | v2 on v1-created databases, and v1 on the result      |
-| `pnpm test:e2e`                                    | Browser suite, including axe                          |
+| Command                                            | What                                                 |
+| -------------------------------------------------- | ---------------------------------------------------- |
+| `pnpm lint`, `pnpm format:check`, `pnpm typecheck` | Static checks. `pnpm format` fixes formatting.       |
+| `pnpm test:unit`                                   | Vitest: server, shared package, web components       |
+| `pnpm test:conformance`                            | The 104 HTTP tests against the v2 server (builds it) |
+| `pnpm test:data-compat`                            | v2 on v1-created databases, and v1 on the result     |
+| `pnpm test:e2e`                                    | Browser suite, including axe                         |
 
 ## Test expectations
 
@@ -41,10 +40,10 @@ Playwright needs a browser once: `pnpm --filter @officepm/web exec playwright in
 - `tests/conformance/` is the contract. Do not edit it to make something pass. A
   deliberate difference from v1 is recorded in the phase notes in
   `docs/ARCHITECTURE-PLAN.md` instead.
-- Both conformance runs must report exactly 104 tests and 104 passing; CI checks the count.
+- The conformance run must report exactly 104 tests and 104 passing; CI checks the count.
 - A UI change keeps axe at zero violations in both themes.
 - Before opening a pull request, run lint, format:check, typecheck, test:unit,
-  both conformance runs and test:data-compat; also test:e2e if the client changed.
+  test:conformance and test:data-compat; also test:e2e if the client changed.
 
 ## Adding a module on the server
 

@@ -1,4 +1,4 @@
-legacy/
+tests/data-compat/frozen-v1/
 tests/conformance/
 pm.db*
 uploads/

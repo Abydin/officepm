@@ -41,7 +41,7 @@ export function inspectTarget(db: OpenDatabase): { tickets: number; users: numbe
 
 /**
  * Fills the database behind `db` with the demo workspace: the same rows, in the same
- * shape, as legacy/scripts/seed-demo.js. Throws SeedRefusal on a database that has
+ * shape, as tests/data-compat/frozen-v1/scripts/seed-demo.js. Throws SeedRefusal on a database that has
  * tickets, or users when `allowExistingUsers` is not set; nothing is written then.
  * Ids and timestamps differ run to run (random UUIDs, dates relative to now).
  */

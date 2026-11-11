@@ -20,7 +20,14 @@ import { COMMENTS, DEMO_PASSWORD, TICKETS, USERS } from './demo-data.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 const PROJECTS_FILE = path.join(REPO_ROOT, 'projects.json');
-const LEGACY_SEED = path.join(REPO_ROOT, 'legacy', 'scripts', 'seed-demo.js');
+const LEGACY_SEED = path.join(
+  REPO_ROOT,
+  'tests',
+  'data-compat',
+  'frozen-v1',
+  'scripts',
+  'seed-demo.js',
+);
 
 const registry = () => new ProjectsRegistry(readProjectsConfig(PROJECTS_FILE));
 const tmp = (name: string) => fs.mkdtempSync(path.join(os.tmpdir(), `officepm-${name}-`));
@@ -128,10 +135,10 @@ describe('demo seeder', () => {
   });
 });
 
-// The v1 script is the reference while it exists. Ids are random UUIDs and dates are relative
+// The frozen v1 script is the reference. Ids are random UUIDs and dates are relative
 // to the moment of the run, so rows are compared on content, not on ids or timestamps.
 describe.skipIf(!fs.existsSync(LEGACY_SEED))(
-  'demo seeder matches legacy/scripts/seed-demo.js',
+  'demo seeder matches frozen-v1/scripts/seed-demo.js',
   () => {
     let v1: OpenDatabase;
     let v2: OpenDatabase;

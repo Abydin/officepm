@@ -1,5 +1,5 @@
 // The demo workspace content: the same users, tickets, comments and checklists as
-// legacy/scripts/seed-demo.js, which the e2e specs and the screenshots were written
+// tests/data-compat/frozen-v1/scripts/seed-demo.js, which the e2e specs and the screenshots were written
 // against. Dates are relative to today (see demo.ts), so the active sprint always
 // looks mid-flight. Keep this in step with the v1 script while both exist.
 

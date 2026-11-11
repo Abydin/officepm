@@ -26,6 +26,7 @@ jobs:
       - run: pnpm run format:check
       - run: pnpm run typecheck
 
+  # The 104 HTTP tests against the compiled v2 server (test:conformance builds it first).
   conformance:
     runs-on: ubuntu-latest
     strategy:
@@ -44,34 +45,9 @@ jobs:
         run: |
           set -o pipefail
           pnpm run test:conformance 2>&1 | tee conformance.log
-          # The count is a claim the README makes; fail if tests silently vanish.
+          # The count is a claim the README makes; fail if tests silently vanish or are skipped.
           grep -qE '^(# |ℹ )tests 104$' conformance.log || { echo 'expected exactly 104 tests'; exit 1; }
-
-  # The same 104 tests, run against the v2 server. This is the P2 exit gate.
-  conformance-v2:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: ['22', '24']
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build:server
-      - name: Run conformance suite against the v2 server and assert the test count
-        shell: bash
-        env:
-          OFFICEPM_SERVER_CMD: apps/server/dist/main.js
-        run: |
-          set -o pipefail
-          node --test tests/conformance/*.test.js 2>&1 | tee conformance-v2.log
-          # Same claim as the v1 job: fail if tests silently vanish or are skipped.
-          grep -qE '^(# |ℹ )tests 104$' conformance-v2.log || { echo 'expected exactly 104 tests'; exit 1; }
-          grep -qE '^(# |ℹ )pass 104$' conformance-v2.log || { echo 'expected all 104 tests to pass'; exit 1; }
+          grep -qE '^(# |ℹ )pass 104$' conformance.log || { echo 'expected all 104 tests to pass'; exit 1; }
 
   unit-and-data-compat:
     runs-on: ubuntu-latest
@@ -88,7 +64,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run test:unit
       # Migrates v1-era databases (seeded, old column shape, moved uploads) and
-      # boots the frozen v1 server on the result.
+      # boots the frozen v1 server (tests/data-compat/frozen-v1) on the result.
       - run: pnpm run test:data-compat
 
   # The browser client (apps/web): lint, types, component tests and the production build.
@@ -182,7 +158,7 @@ jobs:
   # job above (except audit) passed, so adding a job here is how it becomes required.
   ci-required:
     if: always()
-    needs: [lint-typecheck, conformance, conformance-v2, unit-and-data-compat, web, web-e2e, docker]
+    needs: [lint-typecheck, conformance, unit-and-data-compat, web, web-e2e, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every required job succeeded

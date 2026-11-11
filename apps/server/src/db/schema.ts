@@ -1,4 +1,4 @@
-// Drizzle table definitions for query typing. They mirror legacy/schema.js
+// Drizzle table definitions for query typing. They mirror the v1 schema (tests/data-compat/frozen-v1/schema.js)
 // exactly (names, columns, defaults, indexes) but are never used to create
 // tables: migrations/0000-baseline.ts owns the DDL, and a test compares the two.
 //

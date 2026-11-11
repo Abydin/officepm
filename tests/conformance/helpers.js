@@ -13,25 +13,32 @@ const os = require('node:os');
 const path = require('node:path');
 
 const REPO_ROOT = path.join(__dirname, '..', '..');
-// The suite peeks into the legacy database file, so it borrows legacy's copy of
+// The suite peeks into the server's database file, so it borrows the server's copy of
 // better-sqlite3 rather than adding a root dependency.
-const Database = require(require.resolve('better-sqlite3', { paths: [path.join(REPO_ROOT, 'legacy')] }));
+const Database = require(require.resolve('better-sqlite3', { paths: [path.join(REPO_ROOT, 'apps', 'server')] }));
 
 // Which server the suite exercises. OFFICEPM_SERVER_CMD is a command line split
-// on spaces; a lone .js path is run with this node. Unset, it is the frozen v1
-// server in legacy/. Commands run from the repo root so relative paths work.
+// on spaces; a lone .js path is run with this node. Unset, it is the compiled v2
+// server, so `pnpm run build:server` has to have run first (`pnpm test:conformance`
+// does that). Commands run from the repo root so relative paths work.
 function commandFromEnv(name, fallbackScript) {
   const raw = (process.env[name] || '').trim();
-  if (!raw) return { cmd: process.execPath, args: [path.join(REPO_ROOT, fallbackScript)] };
+  if (!raw) {
+    const script = path.join(REPO_ROOT, fallbackScript);
+    if (!fs.existsSync(script)) {
+      throw new Error(script + ' does not exist. Run `pnpm run build:server` first.');
+    }
+    return { cmd: process.execPath, args: [script] };
+  }
   const parts = raw.split(/\s+/);
   if (parts.length === 1 && parts[0].endsWith('.js')) {
     return { cmd: process.execPath, args: [path.resolve(REPO_ROOT, parts[0])] };
   }
   return { cmd: parts[0], args: parts.slice(1) };
 }
-const SERVER_CMD = commandFromEnv('OFFICEPM_SERVER_CMD', path.join('legacy', 'server.js'));
+const SERVER_CMD = commandFromEnv('OFFICEPM_SERVER_CMD', path.join('apps', 'server', 'dist', 'main.js'));
 // Seed script spawned by seed.test.js. Override with OFFICEPM_SEED_CMD.
-const SEED_CMD = commandFromEnv('OFFICEPM_SEED_CMD', path.join('legacy', 'scripts', 'seed-demo.js'));
+const SEED_CMD = commandFromEnv('OFFICEPM_SEED_CMD', path.join('apps', 'server', 'dist', 'seed-main.js'));
 
 const ADMIN = { email: 'admin@officepm.local', password: 'test-admin-password' };
 const PM_TOKEN = 'test-pm-token';

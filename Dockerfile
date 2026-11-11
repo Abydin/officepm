@@ -21,7 +21,6 @@ COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY tests/data-compat/package.json tests/data-compat/package.json
-COPY legacy/package.json legacy/package.json
 
 # Production dependencies of the server only. The compiler toolchain is here, and only here,
 # in case better-sqlite3 or bcrypt has no prebuilt binary for the platform and has to compile.

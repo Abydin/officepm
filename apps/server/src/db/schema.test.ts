@@ -9,8 +9,11 @@ import { BASELINE_SQL } from './migrations/0000-baseline.js';
 import * as schema from './schema.js';
 
 const require = createRequire(import.meta.url);
-const legacyDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../legacy');
-const legacySchema = require(path.join(legacyDir, 'schema.js')) as { SCHEMA_SQL: string };
+const frozenV1Dir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../tests/data-compat/frozen-v1',
+);
+const legacySchema = require(path.join(frozenV1Dir, 'schema.js')) as { SCHEMA_SQL: string };
 const squash = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 interface Info {
@@ -29,7 +32,7 @@ beforeEach(() => {
 afterEach(() => db.close());
 
 describe('baseline migration', () => {
-  it('is legacy/schema.js SCHEMA_SQL, word for word', () => {
+  it('is frozen-v1/schema.js SCHEMA_SQL, word for word', () => {
     expect(squash(BASELINE_SQL)).toBe(squash(legacySchema.SCHEMA_SQL));
   });
 });

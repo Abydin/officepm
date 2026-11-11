@@ -26,5 +26,6 @@ trade-offs, such as the in-memory login throttle.
 
 ## Supported versions
 
-Only the current `main` branch (v2, once merged) receives fixes. The frozen v1 code
-in `legacy/` is kept as a test oracle and is not maintained.
+Only the current `main` branch (v2, once merged) receives fixes. v1 is no longer in the
+tree. The few frozen v1 files in `tests/data-compat/frozen-v1/` are test fixtures only and
+are not maintained.

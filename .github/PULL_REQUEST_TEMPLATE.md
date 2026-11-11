@@ -8,7 +8,7 @@
 
 - [ ] `pnpm lint && pnpm format:check && pnpm typecheck`
 - [ ] `pnpm test:unit`
-- [ ] `pnpm test:conformance` and `pnpm test:conformance:v2` (both must report 104 passing)
+- [ ] `pnpm test:conformance` (must report 104 passing)
 - [ ] `pnpm test:data-compat`
 - [ ] `pnpm test:e2e` (if the client changed)
 

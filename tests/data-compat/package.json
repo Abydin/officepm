@@ -3,13 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Proves v2 migrations and path resolution against databases that v1 created.",
+  "description": "Proves v2 migrations and path resolution against databases that v1 created. Runs the frozen v1 files in frozen-v1/ as the oracle.",
   "devDependencies": {
     "@officepm/shared": "workspace:*",
     "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^9.6.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^11.10.0",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.0",
+    "multer": "^2.4.0",
     "zod": "^4.6.7"
   }
 }
