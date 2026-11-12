@@ -227,8 +227,8 @@ describe('participants', () => {
     ['an empty string', ''],
     ['two lines', 'Front\nend'],
     ['a control character', 'Front\u0007end'],
-    ['a bidi override', 'Front‮end'],
-    ['a zero width mark', 'Front​end'],
+    ['a bidi override', 'Front\u202Eend'],
+    ['a zero width mark', 'Front\u200Bend'],
     ['not a string', 42],
   ])('rejects a role that is %s', async (_name, role) => {
     const t = await newTicket();

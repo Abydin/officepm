@@ -19,10 +19,10 @@ describe('ParticipantRoleSchema', () => {
     ['31 characters', 'y'.repeat(31)],
     ['a newline', 'a\nb'],
     ['a tab', 'a\tb'],
-    ['a line separator', 'a b'],
-    ['a zero-width space', 'a​b'],
-    ['a right-to-left override', 'a‮b'],
-    ['a bidi isolate', 'a⁦b'],
+    ['a line separator', 'a\u2028b'],
+    ['a zero-width space', 'a\u200Bb'],
+    ['a right-to-left override', 'a\u202Eb'],
+    ['a bidi isolate', 'a\u2066b'],
     ['a DEL', 'a\u007fb'],
   ])('rejects %s', (_name, value) => {
     expect(ParticipantRoleSchema.safeParse(value).success).toBe(false);
