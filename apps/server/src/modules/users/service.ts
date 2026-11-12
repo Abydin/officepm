@@ -48,6 +48,8 @@ export function createUserService(ctx: AppContext) {
      * The handoff picker's list, readable by any signed-in user, so it holds only what the
      * picker needs: an opaque user id, the name and the department. Never an email or
      * anything else from the row. (The full user list, GET /api/users, stays admin-only.)
+     * This list does not make emails unreachable: a handoff returns the chosen assignee's
+     * email on the ticket, exactly as every v1 ticket already shows its assignee email.
      * v1 has no project membership, so there is nothing to narrow it by.
      */
     people(): Person[] {
@@ -81,7 +83,7 @@ export function createUserService(ctx: AppContext) {
       return { id: created.id, email, name: b.name as string, is_admin: !!b.is_admin };
     },
 
-    /** Admin only. A blank or null department clears it. */
+    /** Admin only. Only null clears the department; an empty or blank string is a 400. */
     setDepartment(id: string, b: JsonBody): { id: number; department: string | null } {
       const issue = firstRequestIssue(DepartmentSetSchema, {
         department: b.department ?? undefined,

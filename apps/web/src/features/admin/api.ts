@@ -24,7 +24,7 @@ export function useCreateUser() {
   });
 }
 
-/** Admin only. A blank department clears it. */
+/** Admin only. Pass null to clear the department; the server answers 400 to a blank string. */
 export function useSetDepartment() {
   const queryClient = useQueryClient();
   return useMutation({

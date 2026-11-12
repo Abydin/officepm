@@ -188,7 +188,7 @@ on the migrated database (migration `0001-handoffs`: one nullable column and two
 | `POST /api/tickets/:key/handoff` | signed in (as for `PATCH /api/tickets/:key`) | `{ decision: "approve" or "reject", to_status?, from_status?, reason?, assignee_id?, department?, note?, attachment_ids? }`. Moves the ticket, sets the assignee, posts a comment with `source: "handoff"` and records the handoff, in one transaction. `reason` is required to reject. `to_status` defaults to the next (approve) or previous (reject) status. `from_status` makes it fail with 409 if the ticket moved meanwhile. Returns `{ ticket, comment, handoff }` |
 | `GET /api/handoffs/unread` | signed in | Handoffs addressed to you (by email, or by department when no person was named) that you have not read |
 | `POST /api/tickets/:key/handoffs/read` | signed in | Marks the handoffs on a ticket read for you |
-| `GET /api/people` | signed in | `[{ id, name, department }]` for the handoff pickers: an opaque user id (what `assignee_id` takes), the name and the department, and no email. `GET /api/users`, which has emails, stays admin-only |
+| `GET /api/people` | signed in | `[{ id, name, department }]` for the handoff pickers: an opaque user id (what `assignee_id` takes), the name and the department, and no email. `GET /api/users`, which has emails, stays admin-only. A handoff still returns the chosen assignee's email on the ticket, as every ticket shows its assignee email, so the list hides emails but a handoff reveals one |
 | `PATCH /api/users/:id/department` | admin | `{ department: string or null }`, up to 40 characters on one line |
 | `POST /api/users` | admin | now also accepts an optional `department` |
 

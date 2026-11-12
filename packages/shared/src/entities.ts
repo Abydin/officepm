@@ -479,16 +479,23 @@ export type ProjectsConfig = z.infer<typeof ProjectsConfigSchema>;
 // Added after v1. A department is an optional free-text team name on a user, set by
 // an admin, used to suggest who a ticket can be handed to.
 
-/** One short line: the same limits the server applies. */
+/**
+ * One short line: the same limits the server applies. Rejects control characters, line and
+ * paragraph separators, zero-width marks and bidirectional overrides, so a name cannot hide
+ * text or reorder the display.
+ */
 export const DepartmentSchema = z
   .string()
   .trim()
   .min(1)
   .max(40)
-  .regex(/^[^\u0000-\u001f\u007f]+$/, 'must be a single line');
+  .regex(
+    /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2066-\u2069]+$/,
+    'must be a single line',
+  );
 export type Department = z.infer<typeof DepartmentSchema>;
 
-/** PATCH /api/users/:id/department (admin only). Null or empty clears it. */
+/** PATCH /api/users/:id/department (admin only). Only null clears it; an empty or blank string is a 400. */
 export const DepartmentSetSchema = z.object({ department: z.union([DepartmentSchema, z.null()]) });
 export type DepartmentSet = z.infer<typeof DepartmentSetSchema>;
 

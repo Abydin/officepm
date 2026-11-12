@@ -393,6 +393,12 @@ P4 hardening list (current)
 
 Server.
 
+- Known limit, handoff privacy. A handoff returns the chosen assignee's email on the returned
+  ticket, and `comment.created` carries the handoff comment's full body (note and reason) on the
+  event stream, both as v1 already does for tickets and comments. Anyone signed in can therefore
+  learn a person's email by handing a ticket to them, and can read every comment. Narrowing
+  either needs a change to the pinned v1 contract.
+
 - Rate limiting on routes other than login. Login is throttled; nothing else is, which is
   fine for a tailnet-only office tool and worth revisiting if it is ever exposed.
 - Login throttle tuning. The thresholds are untuned, a distributed guesser is only slowed,
@@ -581,9 +587,13 @@ it, else the next status; a drop on an earlier column opens on Reject.
   `GET /api/people` for the pickers (the user list stays admin-only, which the conformance suite
   pins). It returns `{ id, name, department }` only, never an email: the handoff names its
   recipient by that user id (`assignee_id`), and the comment and the event carry no email
-  either (the returned ticket has its `assignee` as every ticket does). v1 has no project membership, so the list cannot be narrowed by project.
-  What v1 already showed any signed-in user: assignee and QA-owner emails on every ticket,
-  their own email on /api/me, comment authors by name. The full directory was not visible and `PATCH /api/users/:id/department` for admins.
+  either. The handoff response does return the chosen assignee's email on the ticket
+  (`ticket.assignee`), exactly as any ticket already shows its assignee email, because the v1
+  ticket contract is pinned. So the picker list has no emails, but a handoff reveals the chosen
+  person's email to the caller. v1 has no project membership, so the list cannot be narrowed by
+  project. What v1 already showed any signed-in user: assignee and QA-owner emails on every
+  ticket, their own email on /api/me, comment authors by name. The full directory (every
+  user's email) was not listed to non-admins. `PATCH /api/users/:id/department` is for admins.
 - Migration `0001-handoffs` is additive: the nullable column and two new tables, nothing rewritten.
   tests/data-compat compared a migrated database with v1's schema exactly; it now sets aside what
   is declared in `V2_ADDITIONS` (tests/data-compat/support/legacy.ts) and still compares everything

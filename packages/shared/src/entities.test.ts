@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DepartmentSchema,
   ErrorBodySchema,
   TicketCreateSchema,
   TicketPatchSchema,
@@ -65,5 +66,27 @@ describe('entities', () => {
   it('has the { error } shape', () => {
     expect(ErrorBodySchema.safeParse({ error: 'not found' }).success).toBe(true);
     expect(ErrorBodySchema.safeParse({ message: 'nope' }).success).toBe(false);
+  });
+});
+
+describe('DepartmentSchema', () => {
+  it('accepts normal names, including non-ASCII letters', () => {
+    for (const name of ['Support', 'QA & Release', 'Ingénierie', 'Ñandú 開発']) {
+      expect(DepartmentSchema.safeParse(name).success).toBe(true);
+    }
+  });
+
+  it('rejects anything that is not one visible line', () => {
+    for (const bad of [
+      'Ops\u202Eevil',
+      'Ops\u2028Two',
+      'Ops\u2029Two',
+      'Ops\u0085Two',
+      'Ops\u200bZero',
+      'Ops\u2066Iso',
+      'Ops\nTwo',
+    ]) {
+      expect(DepartmentSchema.safeParse(bad).success).toBe(false);
+    }
   });
 });

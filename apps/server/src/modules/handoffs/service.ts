@@ -75,7 +75,8 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
         throw badRequest('note must be ' + HANDOFF_NOTE_MAX + ' characters or fewer');
       }
 
-      // People are named by user id: the picker never sees emails (GET /api/people has none).
+      // People are named by user id: the picker list (GET /api/people) has no emails. The returned
+      // ticket still shows the chosen assignee's email, as every ticket does in v1.
       const assigneeId = typeof b.assignee_id === 'number' ? b.assignee_id : null;
       const assignee =
         assigneeId === null
@@ -165,8 +166,10 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
 
       events.broadcast('ticket.updated', ticket);
       comments.announce(comment);
-      // The stream reaches every signed-in user, so it names who and where but carries
-      // neither the note nor the reason, and ids rather than emails: the recipient fetches those from /handoffs/unread.
+      // This event names who and where by id, with no note, reason or email: the recipient
+      // fetches those from /handoffs/unread. The stream reaches every signed-in user and it
+      // also carries comment.created (above) with the full comment body, as in v1, so the
+      // note and reason are readable there by anyone signed in.
       events.broadcast('handoff.created', {
         id: handoffId,
         ticket_key: key,
