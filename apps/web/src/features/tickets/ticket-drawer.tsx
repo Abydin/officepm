@@ -32,6 +32,11 @@ import {
   GithubSection,
   LinksSection,
 } from './drawer-sections';
+import {
+  FeaturePipelineSection,
+  isEpic,
+  PipelineTagsSection,
+} from '@/features/pipeline/drawer-pipeline';
 import { PeopleSection } from './people-section';
 import { SubticketsSection } from './subtickets-section';
 import { parseEmail, usePeople } from './people';
@@ -418,6 +423,9 @@ function DrawerBody({
             />
           </div>
         </section>
+
+        {isEpic(ticket) && <FeaturePipelineSection ticket={ticket} board={board} />}
+        {!isEpic(ticket) && <PipelineTagsSection ticket={ticket} />}
 
         <SubticketsSection ticket={ticket} />
 

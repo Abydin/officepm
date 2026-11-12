@@ -43,6 +43,12 @@ export interface ApiClient {
     body?: unknown,
     options?: Omit<RequestOptions<T>, 'schema' | 'body'>,
   ): Promise<T>;
+  put<T>(
+    path: string,
+    schema: ResponseSchema<T>,
+    body?: unknown,
+    options?: Omit<RequestOptions<T>, 'schema' | 'body'>,
+  ): Promise<T>;
   delete<T>(
     path: string,
     schema: ResponseSchema<T>,
@@ -143,6 +149,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       request(path, { ...o, schema, body: body ?? {}, method: 'POST' }),
     patch: (path, schema, body, o) =>
       request(path, { ...o, schema, body: body ?? {}, method: 'PATCH' }),
+    put: (path, schema, body, o) =>
+      request(path, { ...o, schema, body: body ?? {}, method: 'PUT' }),
     delete: (path, schema, o) => request(path, { ...o, schema, method: 'DELETE' }),
     setUnauthorizedHandler(handler) {
       onUnauthorized = handler;

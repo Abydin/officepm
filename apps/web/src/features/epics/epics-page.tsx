@@ -5,6 +5,7 @@ import { StatusPill } from '@/components/status-pill';
 import { useBoardFrame } from '@/features/projects/board-frame-context';
 import { useTicketDrawer } from '@/features/tickets/use-ticket-drawer';
 import { epicRows } from './epic-progress';
+import { FeaturePipeline } from './feature-pipeline';
 
 /** Every epic on the board with how much of it is done. Each opens in the drawer. */
 export function EpicsPage() {
@@ -56,27 +57,31 @@ export function EpicsPage() {
             >
               <div className="h-full bg-ok" style={{ width: `${percent}%` }} />
             </div>
-            {children.length > 0 && (
-              <details className="mt-3">
-                <summary className="cursor-pointer text-dim">
-                  {children.length} {children.length === 1 ? 'ticket' : 'tickets'} in this epic
-                </summary>
-                <ul className="m-0 mt-2 list-none divide-y divide-line p-0">
-                  {children.map((child) => (
-                    <li key={child.key} className="flex items-center gap-2 py-1.5">
-                      <button
-                        type="button"
-                        onClick={() => open(child.key)}
-                        className="inline-flex min-w-0 flex-1 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left text-fg hover:text-accent"
-                      >
-                        <span className="shrink-0 font-mono text-xs">{child.key}</span>
-                        <span className="min-w-0 truncate">{child.title}</span>
-                      </button>
-                      <StatusPill status={child.status} />
-                    </li>
-                  ))}
-                </ul>
-              </details>
+            {epic.phase ? (
+              <FeaturePipeline epic={epic} board={board} items={children} />
+            ) : (
+              children.length > 0 && (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-dim">
+                    {children.length} {children.length === 1 ? 'ticket' : 'tickets'} in this epic
+                  </summary>
+                  <ul className="m-0 mt-2 list-none divide-y divide-line p-0">
+                    {children.map((child) => (
+                      <li key={child.key} className="flex items-center gap-2 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => open(child.key)}
+                          className="inline-flex min-w-0 flex-1 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left text-fg hover:text-accent"
+                        >
+                          <span className="shrink-0 font-mono text-xs">{child.key}</span>
+                          <span className="min-w-0 truncate">{child.title}</span>
+                        </button>
+                        <StatusPill status={child.status} />
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )
             )}
           </Card>
         </li>

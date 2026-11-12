@@ -26,6 +26,9 @@ export function queryKeysForEvent(name: ServerEventName): readonly QueryKey[] {
     case 'sprint.updated':
       // Completing a sprint makes the server create its retro, and announces only the sprint.
       return [qk.sprints.all, qk.retros.all, qk.dashboard];
+    case 'pipeline.changed':
+      // A project's phase list changed: the settings screen and every epic stepper read it.
+      return [qk.projects.all, qk.tickets.all];
     case 'retro.card.created':
       return [qk.retros.all];
   }

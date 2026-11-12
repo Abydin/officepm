@@ -27,8 +27,13 @@ export const unreadHandoffsQuery = queryOptions({
 
 export interface HandoffInput {
   decision: HandoffDecision;
-  to_status: string;
-  from_status: string;
+  to_status?: string;
+  from_status?: string;
+  /** For an epic on a pipeline: the phase to move to (left out to complete the feature) and the one it was in. */
+  to_phase?: string;
+  from_phase?: string;
+  /** Confirms moving on while tickets tagged with the phase being left are still open. */
+  move_anyway?: boolean;
   reason?: string;
   /** A user id from GET /api/people. */
   assignee_id?: number;

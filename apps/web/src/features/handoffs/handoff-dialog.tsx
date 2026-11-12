@@ -5,7 +5,9 @@ import {
   MAX_HANDOFF_PARTICIPANTS,
   handoffOptions,
   transitionViolation,
+  type HandoffOptions,
   type Board,
+  type EpicPipeline,
   type HandoffDecision,
   type HandoffResult,
   type Person,
@@ -22,11 +24,13 @@ import {
   type DragEvent,
 } from 'react';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorAlert } from '@/components/ui/alert';
 import { Select } from '@/components/ui/select';
 import { textareaClass } from '@/features/tickets/commit-fields';
 import { errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { epicPipelineQuery } from '@/features/pipeline/api';
 import { peopleQuery, useHandoff } from './api';
 
 /** A status change that is waiting for a decision. `target` is where the person tried to put it. */
@@ -67,6 +71,34 @@ function startFor({ ticket, board, target }: HandoffRequest): Start {
     : { decision: 'reject', to: options.previous ?? '', notice: null };
 }
 
+/** An epic that has started a pipeline moves between phases, not statuses. */
+const isPipelineEpic = (ticket: Ticket) =>
+  (ticket.level === 'epic' || ticket.type === 'epic') && Boolean(ticket.phase);
+
+/**
+ * The phase-flavoured twin of handoffOptions: where a feature in `current` can go. Approving out of
+ * the last phase completes the feature, which has no target phase (the target is the empty string).
+ */
+function phaseOptions(pipeline: EpicPipeline): HandoffOptions {
+  const names = pipeline.phases.map((p) => p.name);
+  const idx = names.indexOf(pipeline.current ?? '');
+  if (idx === -1) return { next: null, previous: null, forward: [], back: [] };
+  const later = names.slice(idx + 1);
+  return {
+    next: later[0] ?? null,
+    previous: names[idx - 1] ?? null,
+    forward: later,
+    back: names.slice(0, idx),
+  };
+}
+
+const COMPLETE = '';
+
+/** The department a phase suggests for the hand-over, or '' when it has none. */
+function phaseDepartment(pipeline: EpicPipeline, phase: string): string {
+  return pipeline.phases.find((p) => p.name === phase)?.department ?? '';
+}
+
 const sizeLabel = (bytes: number) =>
   bytes < 1024 * 1024
     ? `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -74,18 +106,72 @@ const sizeLabel = (bytes: number) =>
 
 const label = 'text-xs text-dim';
 
-export function HandoffDialog({
-  request,
-  onClose,
-  onDone,
-}: {
+interface DialogProps {
   request: HandoffRequest;
   onClose: () => void;
   onDone: (result: HandoffResult) => void;
-}) {
+}
+
+/**
+ * The handoff dialog. For an epic on a pipeline it first loads the phases, then moves the feature
+ * between phases; for every other ticket it is the status dialog it always was.
+ */
+export function HandoffDialog(props: DialogProps) {
+  const onPipeline = isPipelineEpic(props.request.ticket);
+  const pipeline = useQuery({
+    ...epicPipelineQuery(props.request.ticket.key),
+    enabled: onPipeline,
+  });
+  if (!onPipeline) return <HandoffForm {...props} />;
+  if (pipeline.data?.in_use) return <HandoffForm {...props} pipeline={pipeline.data} />;
+  return (
+    <Dialog.Root open onOpenChange={(open) => !open && props.onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[60] animate-fade bg-black/50" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed top-[4vh] left-1/2 z-[60] w-[min(560px,calc(100vw-16px))] -translate-x-1/2 rounded-xl border border-line-strong bg-raised p-4 shadow-pop focus:outline-none"
+        >
+          <Dialog.Title className="m-0 mb-3 text-base font-semibold">
+            Move {props.request.ticket.key}
+          </Dialog.Title>
+          {pipeline.isError ? (
+            <>
+              <ErrorAlert>{errorMessage(pipeline.error)}</ErrorAlert>
+              <div className="mt-3 flex justify-end">
+                <Button onClick={props.onClose}>Close</Button>
+              </div>
+            </>
+          ) : (
+            <div role="status" aria-label="Loading pipeline" className="space-y-2">
+              <Skeleton className="h-6" />
+              <Skeleton className="h-24" />
+            </div>
+          )}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function HandoffForm({
+  request,
+  onClose,
+  onDone,
+  pipeline,
+}: DialogProps & { pipeline?: EpicPipeline }) {
   const { ticket, board } = request;
-  const options = handoffOptions(board, ticket.status);
-  const [start] = useState(() => startFor(request));
+  const options = pipeline ? phaseOptions(pipeline) : handoffOptions(board, ticket.status);
+  const stage = pipeline ? (pipeline.current ?? '') : ticket.status;
+  const [start] = useState<Start>(() =>
+    pipeline
+      ? options.next
+        ? { decision: 'approve', to: options.next, notice: null }
+        : pipeline.completed && options.previous
+          ? { decision: 'reject', to: options.previous, notice: null }
+          : { decision: 'approve', to: COMPLETE, notice: null }
+      : startFor(request),
+  );
   const people = useQuery(peopleQuery);
   const handoff = useHandoff(ticket.key);
   const ids = { reason: useId(), note: useId(), notice: useId() };
@@ -95,40 +181,68 @@ export function HandoffDialog({
   const [notice, setNotice] = useState(start.notice);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
-  const [department, setDepartment] = useState('');
+  const [chosenDepartment, setDepartment] = useState('');
   const [assignee, setAssignee] = useState('');
   const [alsoIds, setAlsoIds] = useState<number[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [closeAnyway, setCloseAnyway] = useState(false);
+  const [moveAnyway, setMoveAnyway] = useState(false);
+  // Until the person picks a department themselves, a feature handed to a phase suggests its department.
+  const [departmentTouched, setDepartmentTouched] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const pasted = useRef(0);
   const picker = useRef<HTMLInputElement>(null);
 
-  const targets = decision === 'approve' ? options.forward : options.back;
   const rejecting = decision === 'reject';
+  const lastPhase = Boolean(pipeline) && options.next === null;
+  const completing = lastPhase && !rejecting && to === COMPLETE;
+  const targets = rejecting ? options.back : options.forward;
   // Closing a parent while some of its sub-tickets are open is a warning, not a block: the
   // person has to say so. The server asks for the same confirmation (close_anyway).
-  const openSubtickets = ticket.progress ? ticket.progress.total - ticket.progress.done : 0;
+  const openSubtickets =
+    !pipeline && ticket.progress ? ticket.progress.total - ticket.progress.done : 0;
   const closing =
     !rejecting &&
     openSubtickets > 0 &&
     board.done_statuses.includes(to) &&
     !board.done_statuses.includes(ticket.status);
+  // Moving a feature out of a phase while tickets tagged with it are open is the same kind of warning.
+  const leaving = pipeline?.phases.find((p) => p.name === pipeline.current);
+  const openInPhase = leaving ? leaving.total - leaving.done : 0;
+  const gating = !rejecting && openInPhase > 0;
   const canSend =
-    Boolean(to) &&
+    (Boolean(to) || completing) &&
     (!rejecting || reason.trim() !== '') &&
     (!closing || closeAnyway) &&
+    (!gating || moveAnyway) &&
     !handoff.isPending;
 
   const everyone: Person[] = people.data ?? [];
   const departments = [
     ...new Set(everyone.map((p) => p.department).filter((d): d is string => !!d)),
   ].sort((a, b) => a.localeCompare(b));
+  const suggested = pipeline && !departmentTouched ? phaseDepartment(pipeline, to) : '';
+  const department = departmentTouched
+    ? chosenDepartment
+    : departments.includes(suggested)
+      ? suggested
+      : '';
   const candidates = department ? everyone.filter((p) => p.department === department) : everyone;
+
+  const changeTarget = (next: string) => {
+    setTo(next);
+    // A new suggestion makes the people picked for the old one wrong.
+    if (pipeline && !departmentTouched) {
+      setAssignee('');
+      setAlsoIds([]);
+    }
+  };
 
   const choose = (next: HandoffDecision) => {
     setDecision(next);
-    setTo((next === 'approve' ? options.next : options.previous) ?? '');
+    changeTarget(
+      next === 'approve' ? (options.next ?? (pipeline ? COMPLETE : '')) : (options.previous ?? ''),
+    );
     setNotice(null);
   };
 
@@ -163,8 +277,10 @@ export function HandoffDialog({
       {
         input: {
           decision,
-          to_status: to,
-          from_status: ticket.status,
+          ...(pipeline
+            ? { from_phase: stage, ...(completing ? {} : { to_phase: to }) }
+            : { to_status: to, from_status: ticket.status }),
+          ...(pipeline && gating ? { move_anyway: true } : {}),
           ...(rejecting ? { reason: reason.trim() } : {}),
           ...(assignee ? { assignee_id: Number(assignee) } : {}),
           ...(alsoIds.length ? { participant_ids: alsoIds } : {}),
@@ -233,10 +349,10 @@ export function HandoffDialog({
               <div>
                 <p className="m-0 font-semibold break-words">{ticket.title}</p>
                 <p className="m-0 mt-1 flex flex-wrap items-center gap-1.5 text-dim">
-                  <span data-testid="current-status">{ticket.status}</span>
+                  <span data-testid="current-status">{stage}</span>
                   <ArrowRight className="size-3.5" aria-label="to" />
                   <span data-testid="next-status" className="font-semibold text-fg">
-                    {to || 'nowhere'}
+                    {completing ? 'Complete' : to || 'nowhere'}
                   </span>
                 </p>
               </div>
@@ -249,6 +365,31 @@ export function HandoffDialog({
               >
                 {notice}
               </p>
+            )}
+
+            {gating && (
+              <div
+                role="group"
+                aria-label="Open tickets in this phase"
+                className="rounded-md border border-warn bg-warn-soft px-3 py-2"
+              >
+                <p className="m-0 font-semibold">
+                  {openInPhase} of {leaving!.total} ticket{leaving!.total === 1 ? ' is' : 's are'}{' '}
+                  still open in {stage}.
+                </p>
+                <p className="m-0 mt-1 text-[13px]">
+                  Moving {ticket.key} on does not finish them. Tick the box to move on anyway.
+                </p>
+                <label className="mt-2 flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={moveAnyway}
+                    onChange={(e) => setMoveAnyway(e.target.checked)}
+                    className="size-4 accent-[var(--accent)]"
+                  />
+                  Move anyway
+                </label>
+              </div>
             )}
 
             {closing && (
@@ -282,8 +423,12 @@ export function HandoffDialog({
                 {radio(
                   'approve',
                   'Approve',
-                  options.next ? 'Move it forward' : 'Nothing comes after this status',
-                  options.forward.length === 0,
+                  options.next
+                    ? 'Move it forward'
+                    : lastPhase
+                      ? 'Complete the feature'
+                      : 'Nothing comes after this status',
+                  options.forward.length === 0 && !lastPhase,
                 )}
                 {radio(
                   'reject',
@@ -298,7 +443,12 @@ export function HandoffDialog({
               <label htmlFor={`${ids.notice}-to`} className={label}>
                 Move to
               </label>
-              <Select id={`${ids.notice}-to`} value={to} onChange={(e) => setTo(e.target.value)}>
+              <Select
+                id={`${ids.notice}-to`}
+                value={to}
+                onChange={(e) => changeTarget(e.target.value)}
+              >
+                {lastPhase && !rejecting && <option value={COMPLETE}>Complete the feature</option>}
                 {targets.map((status) => (
                   <option key={status} value={status}>
                     {status}
@@ -338,6 +488,7 @@ export function HandoffDialog({
                     id={`${ids.notice}-dept`}
                     value={department}
                     onChange={(e) => {
+                      setDepartmentTouched(true);
                       setDepartment(e.target.value);
                       // Someone from another department is no longer in the list, so no longer chosen.
                       if (e.target.value) {
@@ -511,7 +662,13 @@ export function HandoffDialog({
             <div className="flex flex-wrap justify-end gap-2">
               <Button onClick={onClose}>Cancel</Button>
               <Button type="submit" variant="primary" disabled={!canSend}>
-                {handoff.isPending ? 'Working...' : rejecting ? 'Send back' : 'Approve and move'}
+                {handoff.isPending
+                  ? 'Working...'
+                  : rejecting
+                    ? 'Send back'
+                    : completing
+                      ? 'Complete feature'
+                      : 'Approve and move'}
               </Button>
             </div>
           </form>

@@ -27,6 +27,8 @@ const config = {
 const routes = (extra: Record<string, unknown> = {}) => ({
   ...signedIn,
   'GET /api/admin/projects': config,
+  // The feature pipeline section lists projects; none here keeps these tests about users and boards.
+  'GET /api/projects': [],
   ...extra,
 });
 

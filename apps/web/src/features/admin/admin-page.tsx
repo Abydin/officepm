@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PipelineSettings } from '@/features/pipeline/pipeline-settings';
 import { useUser } from '@/features/auth/user-context';
 import { CommitInput } from '@/features/tickets/commit-fields';
 import { usersQuery } from '@/features/tickets/api';
@@ -353,6 +354,7 @@ function AdminContent() {
         )}
       </section>
       <CreateUserForm onCreated={(name) => setNotice(`Created ${name}.`)} />
+      <PipelineSettings />
       <BoardsTable />
       {resetting && (
         <ResetPasswordDialog

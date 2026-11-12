@@ -16,6 +16,7 @@ export const qk = {
     docs: (slug: string) => ['projects', 'docs', slug] as const,
     files: (slug: string) => ['projects', 'files', slug] as const,
     config: ['projects', 'config'] as const,
+    pipeline: (slug: string) => ['projects', 'pipeline', slug] as const,
   },
   // Everything about tickets sits under ['tickets'], so the server's ticket events
   // (which invalidate qk.tickets.all) refresh lists, the drawer and My Tickets alike.
@@ -30,6 +31,7 @@ export const qk = {
     files: (key: string) => ['tickets', 'detail', key, 'files'] as const,
     github: (key: string) => ['tickets', 'detail', key, 'github'] as const,
     dod: (key: string) => ['tickets', 'detail', key, 'dod'] as const,
+    pipeline: (key: string) => ['tickets', 'detail', key, 'pipeline'] as const,
   },
   users: ['users'] as const,
   // Everyone's name and department, for the handoff pickers. Open to any signed-in user.
