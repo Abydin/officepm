@@ -124,7 +124,7 @@ describe('normalisePhaseEdit', () => {
     ).toMatchObject({ ok: false });
     expect(edit([{ name: 'A' }, { name: 'a' }])).toMatchObject({ ok: false });
     expect(edit([{ name: 'x\ny' }])).toMatchObject({ ok: false });
-    expect(edit([{ name: 'ok', department: 'a‮b' }])).toMatchObject({ ok: false });
+    expect(edit([{ name: 'ok', department: 'a\u202Eb' }])).toMatchObject({ ok: false });
   });
 });
 

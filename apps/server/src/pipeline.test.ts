@@ -233,7 +233,7 @@ describe('pipeline', () => {
       ['an empty list', [], /at least one/],
       ['a blank name', [{ name: '  ' }], /name/],
       ['a multi-line name', [{ name: 'A\nB' }], /single line/],
-      ['a bidi name', [{ name: 'A‮b' }], /single line/],
+      ['a bidi name', [{ name: 'A\u202Eb' }], /single line/],
       ['a too-long name', [{ name: 'x'.repeat(41) }], /name/],
       ['duplicate names ignoring case', [{ name: 'QA' }, { name: 'qa' }], /different/],
       ['a bad department', [{ name: 'QA', department: 'a\nb' }], /department/],

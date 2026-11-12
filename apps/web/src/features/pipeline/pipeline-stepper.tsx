@@ -44,7 +44,7 @@ export function PipelineStepper({
               {isCurrent && phase.total > 0 && ' · '}
               {phase.total > 0 && `${phase.done} of ${phase.total} done`}
               {passed && phase.total === 0 && 'Done'}
-              {!isCurrent && !passed && phase.total === 0 && ' '}
+              {!isCurrent && !passed && phase.total === 0 && '\u00A0'}
             </span>
           </li>
         );
