@@ -4,6 +4,7 @@ import {
   DodListSchema,
   GithubLinkListSchema,
   OkSchema,
+  ParticipantSchema,
   SprintListSchema,
   TicketFileListSchema,
   TicketFileSchema,
@@ -14,6 +15,7 @@ import {
   UserListSchema,
   type CommentCreate,
   type DodList,
+  type ParticipantAdd,
   type Ticket,
   type TicketLinkCreate,
   type TicketPatch,
@@ -72,6 +74,12 @@ export const sprintsQuery = (slug: string, board: string) =>
 export const myTicketsQuery = queryOptions({
   queryKey: qk.tickets.mine(),
   queryFn: ({ signal }) => api.get('/api/my-tickets', TicketListSchema, { signal }),
+});
+
+/** Tickets I take part in without being the assignee. Separate from My Tickets' assigned list. */
+export const participatingQuery = queryOptions({
+  queryKey: qk.tickets.participating(),
+  queryFn: ({ signal }) => api.get('/api/my-tickets/participating', TicketListSchema, { signal }),
 });
 
 /** The palette's server-side search: capped, as v1's was. */
@@ -207,4 +215,23 @@ export function useToggleDod(key: string) {
 
 export function downloadUrl(ticketKey: string, fileId: string): string {
   return `${ticketPath(ticketKey)}/files/${enc(fileId)}`;
+}
+
+/** Adds a person to a ticket, or changes their role if they are on it already. */
+export function useAddParticipant(key: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ParticipantAdd) =>
+      api.post(`${ticketPath(key)}/participants`, ParticipantSchema, input),
+    onSettled: () => invalidateTickets(queryClient),
+  });
+}
+
+export function useRemoveParticipant(key: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: number) =>
+      api.delete(`${ticketPath(key)}/participants/${userId}`, OkSchema),
+    onSettled: () => invalidateTickets(queryClient),
+  });
 }

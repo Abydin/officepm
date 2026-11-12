@@ -118,6 +118,9 @@ export const TicketSchema = z.object({
   due_date: IsoDate.nullable(),
   created_at: Timestamp,
   updated_at: Timestamp,
+  // Added after v1, optional so older payloads and fixtures still parse. Filled by
+  // GET /api/tickets and GET /api/tickets/:key only.
+  participants: z.array(z.lazy(() => ParticipantSchema)).optional(),
 });
 export type Ticket = z.infer<typeof TicketSchema>;
 
@@ -479,6 +482,10 @@ export type ProjectsConfig = z.infer<typeof ProjectsConfigSchema>;
 // Added after v1. A department is an optional free-text team name on a user, set by
 // an admin, used to suggest who a ticket can be handed to.
 
+/** Text with no control characters, line or paragraph separators, zero-width marks or bidi overrides. */
+export const SINGLE_LINE =
+  /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2066-\u2069]+$/;
+
 /**
  * One short line: the same limits the server applies. Rejects control characters, line and
  * paragraph separators, zero-width marks and bidirectional overrides, so a name cannot hide
@@ -489,10 +496,7 @@ export const DepartmentSchema = z
   .trim()
   .min(1)
   .max(40)
-  .regex(
-    /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2066-\u2069]+$/,
-    'must be a single line',
-  );
+  .regex(SINGLE_LINE, 'must be a single line');
 export type Department = z.infer<typeof DepartmentSchema>;
 
 /** PATCH /api/users/:id/department (admin only). Only null clears it; an empty or blank string is a 400. */
@@ -550,3 +554,35 @@ export const HandoffResultSchema = z.object({
   }),
 });
 export type HandoffResult = z.infer<typeof HandoffResultSchema>;
+
+// ---- participants -----------------------------------------------------------------
+// Added after v1. A ticket keeps its one primary assignee; participants are any number of
+// extra people, each with an optional short role label.
+
+export const PARTICIPANT_ROLE_MAX = 30;
+export const MAX_HANDOFF_PARTICIPANTS = 20;
+
+/** A short role label on one line, like DepartmentSchema but 30 characters at most. */
+export const ParticipantRoleSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(PARTICIPANT_ROLE_MAX)
+  .regex(SINGLE_LINE, 'must be a single line');
+export type ParticipantRole = z.infer<typeof ParticipantRoleSchema>;
+
+/** One person on a ticket besides the assignee. Id, name, department and role: never an email. */
+export const ParticipantSchema = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  department: z.string().nullable(),
+  role: z.string().nullable(),
+});
+export type Participant = z.infer<typeof ParticipantSchema>;
+
+/** POST /api/tickets/:key/participants. A null or absent role means none. */
+export const ParticipantAddSchema = z.object({
+  user_id: z.number().int(),
+  role: z.union([ParticipantRoleSchema, z.null()]).optional(),
+});
+export type ParticipantAdd = z.infer<typeof ParticipantAddSchema>;

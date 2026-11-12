@@ -23,7 +23,8 @@ const text = (value: unknown): string | null =>
 
 export function createHandoffService(ctx: AppContext, comments: CommentService) {
   const { orm, raw } = ctx.db;
-  const { tickets, ticketFiles, ticketHandoffs, users } = schema;
+  const { tickets, ticketFiles, ticketHandoffs, handoffRecipients, ticketParticipants, users } =
+    schema;
   const { projects, events } = ctx;
 
   const unreadStmt = raw.prepare(`
@@ -33,7 +34,10 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
     JOIN tickets t ON t.key = h.ticket_key
     WHERE h.from_email <> @email
       AND (h.to_assignee = @email
-           OR (h.to_assignee IS NULL AND lower(h.to_department) = lower(@department)))
+           OR (h.to_assignee IS NULL AND lower(h.to_department) = lower(@department))
+           OR EXISTS (
+             SELECT 1 FROM handoff_recipients hr WHERE hr.handoff_id = h.id AND hr.user_id = @userId
+           ))
       AND NOT EXISTS (
         SELECT 1 FROM handoff_reads r WHERE r.handoff_id = h.id AND r.user_id = @userId
       )
@@ -73,6 +77,19 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
       const note = text(b.note);
       if (note && note.length > HANDOFF_NOTE_MAX) {
         throw badRequest('note must be ' + HANDOFF_NOTE_MAX + ' characters or fewer');
+      }
+
+      // Everyone else the handoff nudges. Each becomes a participant; the assignee stays single.
+      const participantIds = [...new Set((b.participant_ids as number[] | null | undefined) ?? [])];
+      const chosen = participantIds.length
+        ? orm
+            .select({ id: users.id, email: users.email })
+            .from(users)
+            .where(inArray(users.id, participantIds))
+            .all()
+        : [];
+      if (chosen.length !== participantIds.length) {
+        throw badRequest('participant_ids must all be existing users');
       }
 
       // People are named by user id: the picker list (GET /api/people) has no emails. The returned
@@ -129,6 +146,7 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
       if (files.length) body += '\n\nAttached: ' + files.map((f) => f.name).join(', ');
 
       const handoffId = crypto.randomUUID();
+      let participantsChanged = false;
       const { comment, ticket } = raw.transaction(() => {
         orm
           .update(tickets)
@@ -140,6 +158,24 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
           .where(eq(tickets.key, key))
           .run();
         const row = comments.record(key, user.name, body, 'handoff');
+        const primary = assignee?.email ?? existing.assignee;
+        const added = chosen.filter((p) => p.email !== primary);
+        for (const person of added) {
+          // An existing participant keeps their role.
+          orm
+            .insert(ticketParticipants)
+            .values({ ticket_key: key, user_id: person.id, role: null, added_by: user.id })
+            .onConflictDoNothing()
+            .run();
+        }
+        const recipientIds = new Set([
+          ...(assignee ? [assignee.id] : []),
+          ...chosen.map((p) => p.id),
+        ]);
+        for (const userId of recipientIds) {
+          orm.insert(handoffRecipients).values({ handoff_id: handoffId, user_id: userId }).run();
+        }
+        participantsChanged = added.length > 0;
         orm
           .insert(ticketHandoffs)
           .values({
@@ -165,6 +201,7 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
       })();
 
       events.broadcast('ticket.updated', ticket);
+      if (participantsChanged) events.broadcast('ticket.participants.changed', { key });
       comments.announce(comment);
       // This event names who and where by id, with no note, reason or email: the recipient
       // fetches those from /handoffs/unread. The stream reaches every signed-in user and it
@@ -176,6 +213,7 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
         decision: plan.decision,
         from_user_id: user.id,
         to_user_id: assignee?.id ?? null,
+        to_user_ids: [...new Set([...(assignee ? [assignee.id] : []), ...participantIds])],
         to_department: department,
       });
       return {

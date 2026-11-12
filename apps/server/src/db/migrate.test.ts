@@ -14,11 +14,16 @@ const cols = (table: string) =>
 
 describe('runMigrations', () => {
   it('applies every migration, baseline first, to an empty database and records them', () => {
-    expect(runMigrations(db)).toEqual(['0000-baseline', '0001-handoffs']);
-    expect(MIGRATIONS.map((m) => m.name)).toEqual(['0000-baseline', '0001-handoffs']);
+    const all = ['0000-baseline', '0001-handoffs', '0002-participants'];
+    expect(runMigrations(db)).toEqual(all);
+    expect(MIGRATIONS.map((m) => m.name)).toEqual(all);
     expect(cols('tickets')).toEqual(expect.arrayContaining(['priority', 'labels', 'due_date']));
     const rows = db.prepare(`SELECT name FROM ${MIGRATIONS_TABLE}`).all();
-    expect(rows).toEqual([{ name: '0000-baseline' }, { name: '0001-handoffs' }]);
+    expect(rows).toEqual([
+      { name: '0000-baseline' },
+      { name: '0001-handoffs' },
+      { name: '0002-participants' },
+    ]);
   });
 
   it('adds the department column and the handoff tables to a v1 database without touching its rows', () => {
@@ -33,6 +38,46 @@ describe('runMigrations', () => {
       expect.arrayContaining(['ticket_key', 'decision', 'to_assignee', 'to_department']),
     );
     expect(cols('handoff_reads')).toEqual(['handoff_id', 'user_id', 'read_at']);
+  });
+
+  describe('0002-participants', () => {
+    it('adds the two tables to a v1 database, leaving its rows as they were', () => {
+      db.exec(BASELINE_SQL);
+      db.prepare(
+        "INSERT INTO tickets (project_slug, board_slug, key, title, type, status) VALUES ('p','b','K-1','t','task','Backlog')",
+      ).run();
+      const read = () => db.prepare('SELECT key, title, status FROM tickets').all();
+      const before = read();
+      runMigrations(db);
+      expect(cols('ticket_participants')).toEqual([
+        'ticket_key',
+        'user_id',
+        'role',
+        'added_by',
+        'created_at',
+      ]);
+      expect(cols('handoff_recipients')).toEqual(['handoff_id', 'user_id']);
+      expect(read()).toEqual(before);
+    });
+
+    it('upgrades a database already at 0001 and changes no column of tickets', () => {
+      runMigrations(db, [MIGRATIONS[0]!, MIGRATIONS[1]!]);
+      const ticketCols = cols('tickets');
+      expect(runMigrations(db)).toEqual(['0002-participants']);
+      expect(cols('tickets')).toEqual(ticketCols);
+    });
+
+    it('keeps a person to one row per ticket', () => {
+      runMigrations(db);
+      const add = () =>
+        db
+          .prepare(
+            "INSERT INTO ticket_participants (ticket_key, user_id, added_by) VALUES ('K-1', 2, 1)",
+          )
+          .run();
+      add();
+      expect(add).toThrow(/UNIQUE|PRIMARY KEY/);
+    });
   });
 
   it('is a no-op the second time', () => {

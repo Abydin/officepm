@@ -23,6 +23,7 @@ export const qk = {
     all: ['tickets'] as const,
     list: (filter: { project?: string; board?: string }) => ['tickets', 'list', filter] as const,
     mine: () => ['tickets', 'mine'] as const,
+    participating: () => ['tickets', 'participating'] as const,
     search: (q: string) => ['tickets', 'search', q] as const,
     detail: (key: string) => ['tickets', 'detail', key] as const,
     links: (key: string) => ['tickets', 'detail', key, 'links'] as const,

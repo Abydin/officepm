@@ -14,6 +14,7 @@ import { unlinkQuietly } from '../../lib/files.js';
 import { transitionViolation } from './transitions.js';
 import { labelsColumn, validateTicketExtras } from './validation.js';
 import { serializeTicket } from './serialize.js';
+import { createRelations } from './relations.js';
 
 const TICKET_PATCHABLE = new Set([
   'title',
@@ -56,9 +57,12 @@ export function createTicketService(ctx: AppContext) {
     boardSettings,
     ticketHandoffs,
     handoffReads,
+    handoffRecipients,
+    ticketParticipants,
   } = schema;
   const { projects, events } = ctx;
 
+  const relations = createRelations(ctx);
   const byKey = (key: string) => orm.select().from(tickets).where(eq(tickets.key, key)).get();
 
   function requireTicket(key: string) {
@@ -94,7 +98,7 @@ export function createTicketService(ctx: AppContext) {
         .orderBy(desc(tickets.updated_at))
         .$dynamic();
       if (limit) q = q.limit(limit);
-      return q.all().map(serializeTicket);
+      return relations.decorateList(q.all());
     },
 
     create(b: JsonBody): Ticket {
@@ -147,7 +151,7 @@ export function createTicketService(ctx: AppContext) {
       return ticket;
     },
 
-    get: (key: string): Ticket => serializeTicket(requireTicket(key)),
+    get: (key: string): Ticket => relations.decorateOne(requireTicket(key)),
 
     patch(key: string, body: JsonBody): Ticket {
       const existing = requireTicket(key);
@@ -201,8 +205,8 @@ export function createTicketService(ctx: AppContext) {
 
     remove(key: string): void {
       requireTicket(key);
-      // Cascade by hand: comments, links, GitHub events and DoD state go with the
-      // ticket, files are unlinked, and children lose their parent rather than
+      // Cascade by hand: comments, links, GitHub events, DoD state and participants go with
+      // the ticket, files are unlinked, and children lose their parent rather than
       // being deleted in turn.
       const filePaths = orm
         .select({ stored_path: ticketFiles.stored_path })
@@ -215,6 +219,17 @@ export function createTicketService(ctx: AppContext) {
         tx.delete(comments).where(eq(comments.ticket_key, key)).run();
         tx.delete(githubLinks).where(eq(githubLinks.ticket_key, key)).run();
         tx.delete(ticketDod).where(eq(ticketDod.ticket_key, key)).run();
+        tx.delete(handoffRecipients)
+          .where(
+            inArray(
+              handoffRecipients.handoff_id,
+              tx
+                .select({ id: ticketHandoffs.id })
+                .from(ticketHandoffs)
+                .where(eq(ticketHandoffs.ticket_key, key)),
+            ),
+          )
+          .run();
         tx.delete(handoffReads)
           .where(
             inArray(
@@ -227,6 +242,7 @@ export function createTicketService(ctx: AppContext) {
           )
           .run();
         tx.delete(ticketHandoffs).where(eq(ticketHandoffs.ticket_key, key)).run();
+        tx.delete(ticketParticipants).where(eq(ticketParticipants.ticket_key, key)).run();
         tx.update(tickets).set({ parent_key: null }).where(eq(tickets.parent_key, key)).run();
         tx.delete(tickets).where(eq(tickets.key, key)).run();
       });

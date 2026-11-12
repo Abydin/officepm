@@ -17,6 +17,7 @@ import { retroRoutes } from './modules/retros/routes.js';
 import { sprintRoutes } from './modules/sprints/routes.js';
 import { createSprintService } from './modules/sprints/service.js';
 import { staticRoutes } from './modules/static/routes.js';
+import { participantRoutes } from './modules/participants/routes.js';
 import { ticketRoutes } from './modules/tickets/routes.js';
 import { userRoutes } from './modules/users/routes.js';
 
@@ -55,6 +56,7 @@ export function createApp(ctx: AppContext): Hono<AppEnv> {
   api.route('/', authRoutes(ctx));
   api.route('/', projectRoutes(ctx));
   api.route('/', ticketRoutes(ctx));
+  api.route('/', participantRoutes(ctx));
   api.route('/', commentRoutes(ctx, comments));
   api.route('/', handoffRoutes(ctx, comments));
   api.route('/', sprintRoutes(ctx, sprints));

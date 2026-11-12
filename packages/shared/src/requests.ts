@@ -5,7 +5,7 @@
 // messages come from and which run first. The server only reads the result to
 // decide pass or fail; it never replaces the body with the parsed value.
 import { z } from 'zod';
-import { RETRO_COLUMNS, TicketCreateSchema } from './entities.js';
+import { MAX_HANDOFF_PARTICIPANTS, RETRO_COLUMNS, TicketCreateSchema } from './entities.js';
 import { SprintKindSchema } from './flows.js';
 
 /** Empty string means "not set" in v1's forms, so it stays allowed next to a date. */
@@ -94,6 +94,8 @@ export const HandoffRequestSchema = z.object({
   department: z.string().nullish(),
   note: z.string().nullish(),
   attachment_ids: z.array(z.string()).nullish(),
+  // Everyone else the handoff nudges. They become participants (see ParticipantSchema).
+  participant_ids: z.array(z.number().int()).max(MAX_HANDOFF_PARTICIPANTS).nullish(),
 });
 
 export const SettingsPatchRequestSchema = z.object({

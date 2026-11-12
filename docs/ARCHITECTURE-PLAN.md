@@ -601,3 +601,34 @@ it, else the next status; a drop on an earlier column opens on Reject.
   what it adds there too.
 - The dark theme's `--accent-ink` went from white to a dark ink: white on the dark accent blue is
   about 3:1, which axe flagged on the dialog's primary button. Light theme unchanged.
+
+Post-merge features: participants and sub-tickets
+(Same rule as before: the 104 conformance tests are untouched and API changes are additive.)
+
+Participants. A ticket keeps its single primary assignee (the v1 contract is frozen). Extra
+people are rows in `ticket_participants(ticket_key, user_id, role, added_by, created_at)`, unique on
+(ticket_key, user_id), created by migration `0002-participants` together with `handoff_recipients`.
+v1 has no foreign keys, so "cascade on ticket delete" is done by hand in `tickets/service.ts`, as for
+comments and handoffs.
+
+- Shape. `{ id, name, department, role }` and nothing else: the participants query selects those
+  columns and the tests assert no `@` anywhere in the responses. The role is one plain line, trimmed,
+  1 to 30 characters, with the same control-character, separator, zero-width and bidi rejection as
+  `DepartmentSchema` (both use the shared `SINGLE_LINE` pattern).
+- Who may edit. Any signed-in user, like `PATCH /api/tickets/:key`. The IDOR surface that exists is
+  scoped anyway: a removal is keyed on (ticket in the URL, user id), so asking ticket B to remove
+  someone never touches ticket A, and a person who is not on the ticket is a 404.
+- Where it is returned. Additive `participants` on `GET /api/tickets/:key` and on each row of
+  `GET /api/tickets` (the board cards need it), three queries total, no per-ticket query. Not on
+  PATCH or POST responses, and not on events: clients refetch on the new
+  `ticket.participants.changed` event, which carries only the key.
+- Adding the assignee as a participant is a 409; adding someone twice updates the role (200).
+- Handoff. `participant_ids` (up to 20) on the handoff request: validated before anything is
+  written, inserted with `ON CONFLICT DO NOTHING` (an existing role is kept), and the assignee is
+  never also a participant. Every chosen person, the assignee included, gets a `handoff_recipients`
+  row, which the unread query matches on user id, so each is nudged and reads it on their own.
+  Choice in the dialog: Hand over to stays the single primary (an explicit choice, blank keeps the
+  current assignee), and Also involve is the multi-select. Using the primary picker as a checklist
+  with a primary radio would have changed every existing handoff test and e2e step for no gain.
+- My Tickets. `GET /api/my-tickets/participating` is a new endpoint, so the assignee filter that
+  conformance pins is unchanged. The page shows it as a second table, Also on, only when it is not empty.

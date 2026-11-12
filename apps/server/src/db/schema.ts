@@ -231,6 +231,33 @@ export const handoffReads = sqliteTable(
   (t) => [primaryKey({ columns: [t.handoff_id, t.user_id] })],
 );
 
+export const ticketParticipants = sqliteTable(
+  'ticket_participants',
+  {
+    ticket_key: text('ticket_key').notNull(),
+    user_id: integer('user_id').notNull(),
+    role: text('role'),
+    added_by: integer('added_by').notNull(),
+    created_at: text('created_at').default(now),
+  },
+  (t) => [
+    primaryKey({ columns: [t.ticket_key, t.user_id] }),
+    index('idx_ticket_participants_user').on(t.user_id),
+  ],
+);
+
+export const handoffRecipients = sqliteTable(
+  'handoff_recipients',
+  {
+    handoff_id: text('handoff_id').notNull(),
+    user_id: integer('user_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.handoff_id, t.user_id] }),
+    index('idx_handoff_recipients_user').on(t.user_id),
+  ],
+);
+
 /** Additive bookkeeping table owned by migrate.ts. v1 never reads or writes it. */
 export const officepmMigrations = sqliteTable('_officepm_migrations', {
   name: text('name').primaryKey(),

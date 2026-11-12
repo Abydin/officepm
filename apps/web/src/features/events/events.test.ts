@@ -44,6 +44,10 @@ describe('queryKeysForEvent', () => {
     expect(queryKeysForEvent('retro.card.created')).toEqual([qk.retros.all]);
   });
 
+  it('a participants change refreshes the ticket queries, which include the drawer and the board', () => {
+    expect(queryKeysForEvent('ticket.participants.changed')).toContain(qk.tickets.all);
+  });
+
   it('a sprint update also refreshes retros, because completing one creates its retro', () => {
     expect(queryKeysForEvent('sprint.updated')).toContain(qk.retros.all);
   });

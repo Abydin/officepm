@@ -32,6 +32,8 @@ export interface HandoffInput {
   reason?: string;
   /** A user id from GET /api/people. */
   assignee_id?: number;
+  /** More people to nudge. They become participants on the ticket. */
+  participant_ids?: number[];
   department?: string;
   note?: string;
 }

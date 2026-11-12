@@ -32,6 +32,7 @@ import {
   GithubSection,
   LinksSection,
 } from './drawer-sections';
+import { PeopleSection } from './people-section';
 import { parseEmail, usePeople } from './people';
 import { useTicketDrawer } from './use-ticket-drawer';
 
@@ -406,6 +407,8 @@ function DrawerBody({
             />
           </div>
         </section>
+
+        <PeopleSection ticket={ticket} />
 
         {board.agile && (
           <section aria-labelledby="blockers-title">

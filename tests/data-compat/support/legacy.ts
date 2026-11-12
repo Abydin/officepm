@@ -160,7 +160,7 @@ const squash = (s: string | null) => (s === null ? null : s.replace(/\s+/g, ' ')
  */
 export const V2_ADDITIONS = {
   /** New tables, with their indexes and automatic primary-key indexes. */
-  tables: ['ticket_handoffs', 'handoff_reads'],
+  tables: ['ticket_handoffs', 'handoff_reads', 'ticket_participants', 'handoff_recipients'],
   /** New nullable columns on v1 tables. */
   columns: { users: ['department'] } as Record<string, string[]>,
 };

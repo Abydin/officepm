@@ -2,6 +2,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import {
   HANDOFF_NOTE_MAX,
   HANDOFF_REASON_MAX,
+  MAX_HANDOFF_PARTICIPANTS,
   handoffOptions,
   transitionViolation,
   type Board,
@@ -96,6 +97,7 @@ export function HandoffDialog({
   const [note, setNote] = useState('');
   const [department, setDepartment] = useState('');
   const [assignee, setAssignee] = useState('');
+  const [alsoIds, setAlsoIds] = useState<number[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const pasted = useRef(0);
@@ -152,6 +154,7 @@ export function HandoffDialog({
           from_status: ticket.status,
           ...(rejecting ? { reason: reason.trim() } : {}),
           ...(assignee ? { assignee_id: Number(assignee) } : {}),
+          ...(alsoIds.length ? { participant_ids: alsoIds } : {}),
           ...(department ? { department } : {}),
           ...(note.trim() ? { note: note.trim() } : {}),
         },
@@ -297,6 +300,15 @@ export function HandoffDialog({
                     value={department}
                     onChange={(e) => {
                       setDepartment(e.target.value);
+                      // Someone from another department is no longer in the list, so no longer chosen.
+                      if (e.target.value) {
+                        setAlsoIds((ids) =>
+                          ids.filter(
+                            (id) =>
+                              everyone.find((p) => p.id === id)?.department === e.target.value,
+                          ),
+                        );
+                      }
                       // A person from another department no longer fits the filter.
                       if (
                         e.target.value &&
@@ -322,7 +334,11 @@ export function HandoffDialog({
                   <Select
                     id={`${ids.notice}-who`}
                     value={assignee}
-                    onChange={(e) => setAssignee(e.target.value)}
+                    onChange={(e) => {
+                      setAssignee(e.target.value);
+                      // The primary is not also a participant.
+                      setAlsoIds((ids) => ids.filter((id) => String(id) !== e.target.value));
+                    }}
                   >
                     <option value="">
                       {department ? `Anyone in ${department}` : 'Keep the current assignee'}
@@ -349,6 +365,38 @@ export function HandoffDialog({
                   </Select>
                 </div>
               </div>
+              <fieldset className="m-0 min-w-0 border-0 p-0">
+                <legend className={cn(label, 'mb-1 p-0')}>
+                  Also involve (optional, they are added under People and nudged too)
+                </legend>
+                <div className="max-h-36 space-y-1 overflow-y-auto rounded-md border border-line-strong p-2">
+                  {candidates
+                    .filter((p) => String(p.id) !== assignee)
+                    .map((p) => {
+                      const checked = alsoIds.includes(p.id);
+                      return (
+                        <label key={p.id} className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={!checked && alsoIds.length >= MAX_HANDOFF_PARTICIPANTS}
+                            onChange={(e) =>
+                              setAlsoIds((current) =>
+                                e.target.checked
+                                  ? [...current, p.id]
+                                  : current.filter((id) => id !== p.id),
+                              )
+                            }
+                            className="size-4 accent-[var(--accent)]"
+                          />
+                          <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                          {p.department && <span className="text-xs text-dim">{p.department}</span>}
+                        </label>
+                      );
+                    })}
+                  {candidates.length === 0 && <span className="text-dim">No one to choose.</span>}
+                </div>
+              </fieldset>
               <div className="flex flex-col gap-1">
                 <label htmlFor={ids.note} className={label}>
                   Note (optional)

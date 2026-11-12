@@ -147,6 +147,10 @@ Added in 3c (the remaining v1 screens, none of them placeholders now):
   reason on reject) are `planHandoff` and `handoffOptions` in `@officepm/shared`, the same functions the server runs.
   Attachments are uploaded to the ticket first and removed again if the handoff is then refused. Recipients see a count
   in the sidebar and top bar and a Handed to you list on My Tickets. Admins edit a person's department on the Admin page.
+- **People** (`features/tickets/people-section.tsx`): the drawer section that adds and removes participants with a role. The
+  list comes with the ticket (`participants`), the picker reuses `GET /api/people` and the department filter, and card
+  avatars (`ParticipantStack` in `ticket-card.tsx`) show three then +N. My Tickets has a second table, Also on, from
+  `GET /api/my-tickets/participating`.
 - The top bar's sprint picker (v1's), a Docs & Files link under each project in the sidebar and an Admin link for admins. The sidebar is scoped by route: under `/projects/:slug` it shows that one project and an All projects link (`sidebar-nav.tsx`), elsewhere it lists every project.
 
 Phase 4 changed the build, not the screens: the secondary screens load lazily, the e2e suite gained a security spec

@@ -176,8 +176,60 @@ for (const theme of ['dark', 'light'] as const) {
 
     test('my tickets', async ({ page }) => {
       await page.goto('/#/mine');
-      await expect(page.getByRole('table')).toBeVisible();
+      await expect(page.getByRole('table', { name: 'Assigned to you' })).toBeVisible();
       expect(await violations(page)).toEqual([]);
+    });
+
+    test('people on a ticket: drawer, card avatars and the Also on list', async ({
+      page,
+      browser,
+    }) => {
+      const created = await page.request.post('/api/tickets', {
+        data: {
+          project_slug: 'food',
+          board_slug: 'design',
+          title: `A11y people ${theme}`,
+          type: 'task',
+          // Not In Progress: that column has a WIP limit, and going over it shows a badge with its own contrast problem.
+          status: 'Backlog',
+        },
+      });
+      const { key } = (await created.json()) as { key: string };
+      const people = (await (await page.request.get('/api/people')).json()) as Array<{
+        id: number;
+        name: string;
+      }>;
+      for (const name of ['Sam Adeyemi', 'Tunde Bakare', 'Priya Nair', 'Maya Okafor']) {
+        await page.request.post(`/api/tickets/${key}/participants`, {
+          data: { user_id: people.find((p) => p.name === name)!.id, role: 'Reviewer' },
+        });
+      }
+      await page.goto(`/#/projects/food/boards/design?t=${key}`);
+      const drawer = page.getByRole('dialog');
+      await expect(drawer.getByRole('list', { name: 'People on this ticket' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+
+      // The picker open inside the drawer, then the board behind it with the avatar stack.
+      await drawer.getByRole('button', { name: /^Person to add/ }).click();
+      await expect(page.getByRole('combobox', { name: 'Find a person' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+      await page.keyboard.press('Escape');
+      await drawer.getByRole('button', { name: 'Close ticket' }).click();
+      await expect(
+        page.locator(`[data-ticket-key="${key}"]`).getByTestId('participants'),
+      ).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+
+      // Sam is on it as a participant, so his My Tickets has the Also on list.
+      const context = await browser.newContext();
+      const sam = await context.newPage();
+      await sam.emulateMedia({ reducedMotion: 'reduce' });
+      await sam.addInitScript((t) => localStorage.setItem('pm_theme', t), theme);
+      await signIn(sam, SAM);
+      await sam.goto('/#/mine');
+      await expect(sam.getByRole('table', { name: 'Also on' })).toContainText(key);
+      expect(await violations(sam)).toEqual([]);
+      await context.close();
     });
 
     test('my tickets with something handed to me', async ({ page, browser }) => {

@@ -135,6 +135,16 @@ top bar, a Handed to you list on My Tickets (including handoffs to their departm
 pushed live over the event stream. Departments are an optional label an admin sets per
 person on the Admin page; they filter the handoff's people picker.
 
+**More people on a ticket.** A ticket keeps one assignee. Anyone else who works on it is
+listed under People in the ticket drawer, each with an optional short role (PM, Frontend,
+Backend: one plain line, 30 characters at most). Their initials show on the board card
+(three, then +N). The handoff dialog has an Also involve list: the person under Hand over
+to stays the single assignee, everyone ticked there is added to People and told about the
+handoff too, so each sees it under Handed to you and in the unread count. Tickets where
+you are listed but are not the assignee appear on My Tickets under Also on; the assigned
+list is unchanged. Anyone signed in can add or remove people, as anyone signed in can edit
+a ticket today: v1 has no per-ticket permissions and this adds none.
+
 **Real-time.** Server-Sent Events, so a ticket someone else moves appears
 immediately without polling.
 
@@ -181,7 +191,7 @@ handler that drifts from the contract fails a test rather than a screen.
 ### API additions since v1
 
 All additive: v1's routes and response shapes are unchanged, and a v1 server still runs
-on the migrated database (migration `0001-handoffs`: one nullable column and two tables).
+on the migrated database (migration `0001-handoffs`: one nullable column and two tables; `0002-participants`: two more tables).
 
 | Route | Who | What |
 |---|---|---|
@@ -191,6 +201,21 @@ on the migrated database (migration `0001-handoffs`: one nullable column and two
 | `GET /api/people` | signed in | `[{ id, name, department }]` for the handoff pickers: an opaque user id (what `assignee_id` takes), the name and the department, and no email. `GET /api/users`, which has emails, stays admin-only. A handoff still returns the chosen assignee's email on the ticket, as every ticket shows its assignee email, so the list hides emails but a handoff reveals one |
 | `PATCH /api/users/:id/department` | admin | `{ department: string or null }`, up to 40 characters on one line |
 | `POST /api/users` | admin | now also accepts an optional `department` |
+| `GET /api/tickets/:key/participants` | signed in | `[{ id, name, department, role }]`, oldest first. Never an email |
+| `POST /api/tickets/:key/participants` | signed in | `{ user_id, role? }`. `role` is one plain line, 1 to 30 characters after trimming, or null for none. 201 when added, 200 when the person was already on the ticket and only the role changed. 400 for an unknown user or a bad role, 409 for the ticket's own assignee. Returns the one participant |
+| `DELETE /api/tickets/:key/participants/:userId` | signed in | Removes that person from this ticket only; 404 if they are not on it |
+| `GET /api/my-tickets/participating` | signed in | Tickets you are a participant on and not the assignee of. `GET /api/my-tickets` is unchanged |
+
+`GET /api/tickets` and `GET /api/tickets/:key` add a `participants` array to each ticket
+(`PATCH`, `POST` and the event stream do not carry it). `POST /api/tickets/:key/handoff`
+also takes `participant_ids` (up to 20 user ids): they become participants, keep any role they
+already had, and get the unread nudge. The event stream gains `ticket.participants.changed`,
+which carries only the ticket key.
+
+What this does not hide: the ticket's `assignee` is still an email on every ticket, as in v1,
+and a handoff that names an assignee still returns that email. The participants lists, the
+`participant_ids` handoff path and the new event add no email. Participants are visible to every
+signed-in user, like the assignee.
 
 `GET /api/users` rows gain `department`, comments may have `source: "handoff"`, and the
 event stream gains `handoff.created` (user ids and the ticket key, never emails, the note or the reason).

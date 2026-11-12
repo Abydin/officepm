@@ -195,16 +195,27 @@ describe.each(cases)('$label', ({ build, extra }) => {
     expect(snap.tableInfo).toEqual(reference.tableInfo);
     // The only intended extras: the migration bookkeeping table and what the additive
     // migrations declare in V2_ADDITIONS (their tables, indexes and primary-key indexes).
-    expect(V2_ADDITIONS.tables).toEqual(['ticket_handoffs', 'handoff_reads']);
+    expect(V2_ADDITIONS.tables).toEqual([
+      'ticket_handoffs',
+      'handoff_reads',
+      'ticket_participants',
+      'handoff_recipients',
+    ]);
     expect([...snap.extras].sort()).toEqual([
       '_officepm_migrations',
       'handoff_reads',
+      'handoff_recipients',
+      'idx_handoff_recipients_user',
       'idx_ticket_handoffs_assignee',
       'idx_ticket_handoffs_ticket',
+      'idx_ticket_participants_user',
       'sqlite_autoindex__officepm_migrations_1',
       'sqlite_autoindex_handoff_reads_1',
+      'sqlite_autoindex_handoff_recipients_1',
       'sqlite_autoindex_ticket_handoffs_1',
+      'sqlite_autoindex_ticket_participants_1',
       'ticket_handoffs',
+      'ticket_participants',
     ]);
   });
 

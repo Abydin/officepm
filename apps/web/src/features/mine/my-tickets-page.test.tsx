@@ -10,6 +10,7 @@ describe('My Tickets', () => {
     stubApi({
       ...signedIn,
       'GET /api/my-tickets': [mine],
+      'GET /api/my-tickets/participating': [],
       'GET /api/tickets': [mine],
       ...ticketRoutes({ current: mine }),
     });
@@ -27,9 +28,36 @@ describe('My Tickets', () => {
   });
 
   it('says so when nothing is assigned', async () => {
-    stubApi({ ...signedIn, 'GET /api/my-tickets': [] });
+    stubApi({ ...signedIn, 'GET /api/my-tickets': [], 'GET /api/my-tickets/participating': [] });
     renderApp('/mine');
     expect(await screen.findByText('Nothing assigned to you')).toBeVisible();
+  });
+
+  it('lists tickets I am a participant on in their own section, apart from the assigned ones', async () => {
+    const mine = makeTicket({ title: 'Assigned one' });
+    const shared = makeTicket({ key: 'FOOD-DES-2', id: 2, title: 'Shared with me' });
+    stubApi({
+      ...signedIn,
+      'GET /api/my-tickets': [mine],
+      'GET /api/my-tickets/participating': [shared],
+    });
+    renderApp('/mine');
+    const assigned = await screen.findByRole('table', { name: 'Assigned to you' });
+    expect(within(assigned).getByText('Assigned one')).toBeVisible();
+    expect(within(assigned).queryByText('Shared with me')).toBeNull();
+    const also = await screen.findByRole('table', { name: 'Also on' });
+    expect(within(also).getByText('Shared with me')).toBeVisible();
+  });
+
+  it('shows no Also on section when there is nothing to list', async () => {
+    stubApi({
+      ...signedIn,
+      'GET /api/my-tickets': [makeTicket()],
+      'GET /api/my-tickets/participating': [],
+    });
+    renderApp('/mine');
+    await screen.findByRole('table', { name: 'Assigned to you' });
+    expect(screen.queryByRole('heading', { name: 'Also on' })).toBeNull();
   });
 
   it('shows the server error instead of an empty list', async () => {

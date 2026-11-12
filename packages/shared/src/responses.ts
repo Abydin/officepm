@@ -7,6 +7,7 @@ import {
   DodItemSchema,
   GithubLinkSchema,
   HandoffNoticeSchema,
+  ParticipantSchema,
   PersonSchema,
   ProjectFileSchema,
   ProjectSchema,
@@ -76,6 +77,7 @@ export const SERVER_EVENTS = [
   'ticket.deleted',
   'comment.created',
   'handoff.created',
+  'ticket.participants.changed',
   'sprint.created',
   'sprint.updated',
   'sprint.deleted',
@@ -88,3 +90,7 @@ export const PersonListSchema = z.array(PersonSchema);
 export type PersonList = z.infer<typeof PersonListSchema>;
 export const HandoffNoticeListSchema = z.array(HandoffNoticeSchema);
 export type HandoffNoticeList = z.infer<typeof HandoffNoticeListSchema>;
+
+/** GET /api/tickets/:key/participants. */
+export const ParticipantListSchema = z.array(ParticipantSchema);
+export type ParticipantList = z.infer<typeof ParticipantListSchema>;

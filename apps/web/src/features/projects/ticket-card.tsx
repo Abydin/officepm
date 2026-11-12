@@ -28,6 +28,37 @@ function Flag({ tone, children }: { tone: 'red' | 'amber'; children: string }) {
   );
 }
 
+const STACK_MAX = 3;
+
+/** Initials of the extra people on a ticket, overlapping, with +N for the rest. */
+function ParticipantStack({ participants }: { participants: NonNullable<Ticket['participants']> }) {
+  if (participants.length === 0) return null;
+  const shown = participants.slice(0, STACK_MAX);
+  const more = participants.length - shown.length;
+  return (
+    <span data-testid="participants" className="inline-flex items-center">
+      {shown.map((p, i) => (
+        <span
+          key={p.id}
+          title={p.role ? `${p.name} (${p.role})` : p.name}
+          className={cn('rounded-full ring-2 ring-raised', i > 0 && '-ml-1.5')}
+        >
+          <Avatar who={p.name} />
+        </span>
+      ))}
+      {more > 0 && (
+        <span
+          role="img"
+          aria-label={`and ${more} more`}
+          className="-ml-1.5 inline-flex size-6 items-center justify-center rounded-full bg-hover text-[10px] font-semibold ring-2 ring-raised"
+        >
+          +{more}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** What a card shows. Also the drag overlay, which is why it takes no hooks. */
 export function CardFace({
   ticket,
@@ -94,6 +125,7 @@ export function CardFace({
         )}
         <span className="flex-1" />
         <DueChip date={ticket.due_date} done={done} />
+        <ParticipantStack participants={ticket.participants ?? []} />
         <Avatar who={ticket.assignee} />
       </div>
     </div>

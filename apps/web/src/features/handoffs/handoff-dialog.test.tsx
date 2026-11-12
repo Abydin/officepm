@@ -149,6 +149,44 @@ describe('HandoffDialog', () => {
     ]);
   });
 
+  it('nudges several people: the primary stays single and the others go as participant_ids', async () => {
+    const { user, posts } = setup({ status: 'In Progress' });
+    await screen.findByRole('option', { name: 'Sam Adeyemi' });
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Hand over to' }), '2');
+    const also = within(screen.getByRole('group', { name: /Also involve/ }));
+    // The person chosen as primary is not offered again.
+    expect(also.queryByRole('checkbox', { name: /Sam Adeyemi/ })).toBeNull();
+    await user.click(also.getByRole('checkbox', { name: /Tunde Bakare/ }));
+    await user.click(also.getByRole('checkbox', { name: /Pat Lee/ }));
+    await user.click(screen.getByRole('button', { name: 'Approve and move' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]!.body).toMatchObject({ assignee_id: 2, participant_ids: [3, 4] });
+  });
+
+  it('drops a chosen participant who becomes the primary, and sends no list when none is chosen', async () => {
+    const { user, posts } = setup({ status: 'In Progress' });
+    await screen.findByRole('option', { name: 'Sam Adeyemi' });
+    const also = within(screen.getByRole('group', { name: /Also involve/ }));
+    await user.click(also.getByRole('checkbox', { name: /Sam Adeyemi/ }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Hand over to' }), '2');
+    await user.click(screen.getByRole('button', { name: 'Approve and move' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]!.body.participant_ids).toBeUndefined();
+    expect(posts()[0]!.body.assignee_id).toBe(2);
+  });
+
+  it('forgets chosen people who are outside a department picked afterwards', async () => {
+    const { user, posts } = setup({ status: 'In Progress' });
+    await screen.findByRole('option', { name: /Sam Adeyemi/ });
+    const also = within(screen.getByRole('group', { name: /Also involve/ }));
+    await user.click(also.getByRole('checkbox', { name: /Maya Okafor/ }));
+    await user.click(also.getByRole('checkbox', { name: /Tunde Bakare/ }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Department' }), 'Engineering');
+    await user.click(screen.getByRole('button', { name: 'Approve and move' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]!.body.participant_ids).toEqual([3]);
+  });
+
   it('narrows the people to a chosen department and sends the department', async () => {
     const { user, posts } = setup();
     await screen.findByRole('option', { name: /Sam Adeyemi/ });
