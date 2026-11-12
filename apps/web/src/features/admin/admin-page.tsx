@@ -18,7 +18,8 @@ import { projectsConfigQuery, useCreateUser, useResetPassword, useSetDepartment 
 
 const th = 'px-3 py-2 font-medium';
 const td = 'px-3 py-2';
-const table = 'overflow-x-auto rounded-lg border border-line bg-raised';
+// relative: the screen-reader-only header text is absolutely positioned and must stay inside the scroller.
+const table = 'relative overflow-x-auto rounded-lg border border-line bg-raised';
 
 function CreateUserForm({ onCreated }: { onCreated: (name: string) => void }) {
   const create = useCreateUser();

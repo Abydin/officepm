@@ -55,7 +55,9 @@ function AddTicketForm({
   const add = useAddFeatureTicket();
   const ids = { title: useId(), phase: useId(), lane: useId(), lanes: useId() };
   const [title, setTitle] = useState('');
-  const [phase, setPhase] = useState(current);
+  // Follows the feature's current phase until the person picks another one.
+  const [chosenPhase, setPhase] = useState<string | null>(null);
+  const phase = chosenPhase ?? current;
   const [lane, setLane] = useState('');
   const type = board.types.includes('task') ? 'task' : board.types.find((t) => t !== 'epic');
   const suggestions = [
