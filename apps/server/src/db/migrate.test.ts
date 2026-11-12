@@ -14,7 +14,7 @@ const cols = (table: string) =>
 
 describe('runMigrations', () => {
   it('applies every migration, baseline first, to an empty database and records them', () => {
-    const all = ['0000-baseline', '0001-handoffs', '0002-participants'];
+    const all = ['0000-baseline', '0001-handoffs', '0002-participants', '0003-subtickets'];
     expect(runMigrations(db)).toEqual(all);
     expect(MIGRATIONS.map((m) => m.name)).toEqual(all);
     expect(cols('tickets')).toEqual(expect.arrayContaining(['priority', 'labels', 'due_date']));
@@ -23,6 +23,7 @@ describe('runMigrations', () => {
       { name: '0000-baseline' },
       { name: '0001-handoffs' },
       { name: '0002-participants' },
+      { name: '0003-subtickets' },
     ]);
   });
 
@@ -63,7 +64,7 @@ describe('runMigrations', () => {
     it('upgrades a database already at 0001 and changes no column of tickets', () => {
       runMigrations(db, [MIGRATIONS[0]!, MIGRATIONS[1]!]);
       const ticketCols = cols('tickets');
-      expect(runMigrations(db)).toEqual(['0002-participants']);
+      expect(runMigrations(db, MIGRATIONS.slice(0, 3))).toEqual(['0002-participants']);
       expect(cols('tickets')).toEqual(ticketCols);
     });
 
@@ -77,6 +78,60 @@ describe('runMigrations', () => {
           .run();
       add();
       expect(add).toThrow(/UNIQUE|PRIMARY KEY/);
+    });
+  });
+
+  describe('0003-subtickets', () => {
+    const insert = (db: Database.Database) =>
+      db
+        .prepare(
+          "INSERT INTO tickets (project_slug, board_slug, key, title, type, status) VALUES ('p','b','K-1','t','task','Backlog')",
+        )
+        .run();
+
+    it('adds subticket_of to a v1 database and leaves its rows as they were', () => {
+      db.exec(BASELINE_SQL);
+      insert(db);
+      const v1Cols =
+        'id, project_slug, board_slug, key, title, type, status, parent_key, created_at';
+      const before = db.prepare(`SELECT ${v1Cols} FROM tickets`).all();
+      runMigrations(db);
+      expect(cols('tickets')).toContain('subticket_of');
+      expect(db.prepare(`SELECT ${v1Cols} FROM tickets`).all()).toEqual(before);
+      expect(db.prepare('SELECT subticket_of FROM tickets').all()).toEqual([
+        { subticket_of: null },
+      ]);
+    });
+
+    it('upgrades a v2 database that is already at 0002, keeping its tickets and participants', () => {
+      runMigrations(db, MIGRATIONS.slice(0, 3));
+      insert(db);
+      db.prepare(
+        "INSERT INTO ticket_participants (ticket_key, user_id, role, added_by) VALUES ('K-1', 2, 'PM', 1)",
+      ).run();
+      expect(cols('tickets')).not.toContain('subticket_of');
+      expect(runMigrations(db)).toEqual(['0003-subtickets']);
+      expect(db.prepare('SELECT key, title, subticket_of FROM tickets').all()).toEqual([
+        { key: 'K-1', title: 't', subticket_of: null },
+      ]);
+      expect(db.prepare('SELECT ticket_key, role FROM ticket_participants').all()).toEqual([
+        { ticket_key: 'K-1', role: 'PM' },
+      ]);
+    });
+
+    it('keeps parent_key as it was: the epic relation is a different column', () => {
+      runMigrations(db);
+      insert(db);
+      db.prepare("UPDATE tickets SET parent_key = 'EPIC-1', subticket_of = 'K-9'").run();
+      expect(db.prepare('SELECT parent_key, subticket_of FROM tickets').all()).toEqual([
+        { parent_key: 'EPIC-1', subticket_of: 'K-9' },
+      ]);
+    });
+
+    it('is safe when the column already exists', () => {
+      db.exec(BASELINE_SQL);
+      db.exec('ALTER TABLE tickets ADD COLUMN subticket_of TEXT');
+      expect(() => runMigrations(db)).not.toThrow();
     });
   });
 

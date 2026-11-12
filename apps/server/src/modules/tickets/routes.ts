@@ -2,10 +2,9 @@ import { Hono } from 'hono';
 import type { Ok } from '@officepm/shared';
 import type { AppContext, AppEnv } from '../../context.js';
 import { requireAuth } from '../../http/auth.js';
-import { createTicketService } from './service.js';
+import type { TicketService } from './service.js';
 
-export function ticketRoutes(ctx: AppContext) {
-  const service = createTicketService(ctx);
+export function ticketRoutes(ctx: AppContext, service: TicketService) {
   const router = new Hono<AppEnv>();
   const auth = requireAuth(ctx);
 

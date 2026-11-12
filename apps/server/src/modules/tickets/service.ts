@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import {
   DodPatchRequestSchema,
+  EPIC_TYPE,
   TicketCreateRequestSchema,
   TicketPatchRequestSchema,
   type DodItem,
@@ -101,7 +102,8 @@ export function createTicketService(ctx: AppContext) {
       return relations.decorateList(q.all());
     },
 
-    create(b: JsonBody): Ticket {
+    /** `subticketOf` is set only by the sub-ticket module, which has already checked the rules. */
+    create(b: JsonBody, subticketOf: string | null = null): Ticket {
       const found = projects.findBoard(b.project_slug, b.board_slug);
       if (!found) throw badRequest('unknown project/board');
       const { board } = found;
@@ -142,6 +144,7 @@ export function createTicketService(ctx: AppContext) {
             priority: (b.priority as string) || null,
             labels: labelsColumn(b.labels),
             due_date: (b.due_date as string) || null,
+            subticket_of: subticketOf,
           })
           .run();
         return next;
@@ -175,6 +178,19 @@ export function createTicketService(ctx: AppContext) {
         }
         if (field === 'type' && found && !found.board.types.includes(body.type as string)) {
           throw badRequest('type must be one of: ' + found.board.types.join(', '));
+        }
+        // An epic is neither a sub-ticket nor a parent of them (see shared/subtickets.ts).
+        if (field === 'type' && body.type === EPIC_TYPE && existing.type !== EPIC_TYPE) {
+          const parentOrChild =
+            existing.subticket_of ||
+            orm
+              .select({ key: tickets.key })
+              .from(tickets)
+              .where(eq(tickets.subticket_of, key))
+              .get();
+          if (parentOrChild) {
+            throw conflict('a ticket that is, or has, sub-tickets cannot become an epic');
+          }
         }
         const value = body[field];
         set[field] =
@@ -243,7 +259,9 @@ export function createTicketService(ctx: AppContext) {
           .run();
         tx.delete(ticketHandoffs).where(eq(ticketHandoffs.ticket_key, key)).run();
         tx.delete(ticketParticipants).where(eq(ticketParticipants.ticket_key, key)).run();
+        // Children lose their parent rather than being deleted, for epics and sub-tickets alike.
         tx.update(tickets).set({ parent_key: null }).where(eq(tickets.parent_key, key)).run();
+        tx.update(tickets).set({ subticket_of: null }).where(eq(tickets.subticket_of, key)).run();
         tx.delete(tickets).where(eq(tickets.key, key)).run();
       });
       for (const f of filePaths) {

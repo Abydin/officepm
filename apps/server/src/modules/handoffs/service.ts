@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   HANDOFF_NOTE_MAX,
   HandoffRequestSchema,
+  openSubticketsMessage,
   planHandoff,
   type HandoffNotice,
   type HandoffResult,
@@ -12,6 +13,7 @@ import { schema } from '../../db/index.js';
 import { badRequest, conflict, notFound } from '../../http/errors.js';
 import { requireShape } from '../../http/validate.js';
 import type { CommentService } from '../comments/service.js';
+import { createRelations } from '../tickets/relations.js';
 import { serializeTicket } from '../tickets/serialize.js';
 
 const MAX_ATTACHMENTS = 20;
@@ -26,6 +28,7 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
   const { tickets, ticketFiles, ticketHandoffs, handoffRecipients, ticketParticipants, users } =
     schema;
   const { projects, events } = ctx;
+  const relations = createRelations(ctx);
 
   const unreadStmt = raw.prepare(`
     SELECT h.id, h.ticket_key, t.title AS ticket_title, h.decision, h.from_status, h.to_status,
@@ -90,6 +93,20 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
         : [];
       if (chosen.length !== participantIds.length) {
         throw badRequest('participant_ids must all be existing users');
+      }
+
+      // Closing a parent while its sub-tickets are open needs an explicit confirmation.
+      if (
+        found.board.done_statuses.includes(plan.to) &&
+        !found.board.done_statuses.includes(existing.status)
+      ) {
+        const open = orm
+          .select()
+          .from(tickets)
+          .where(eq(tickets.subticket_of, key))
+          .all()
+          .filter((c) => !relations.isDone(c)).length;
+        if (open && b.close_anyway !== true) throw conflict(openSubticketsMessage(open));
       }
 
       // People are named by user id: the picker list (GET /api/people) has no emails. The returned

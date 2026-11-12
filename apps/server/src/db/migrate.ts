@@ -11,6 +11,7 @@ import type Database from 'better-sqlite3';
 import { baseline } from './migrations/0000-baseline.js';
 import { handoffs } from './migrations/0001-handoffs.js';
 import { participants } from './migrations/0002-participants.js';
+import { subtickets } from './migrations/0003-subtickets.js';
 
 export interface Migration {
   /** Unique and stable, sorted by name. Convention: 0001-short-slug. */
@@ -19,7 +20,7 @@ export interface Migration {
 }
 
 /** Append new migrations here, in order. Never edit or reorder an applied one. */
-export const MIGRATIONS: readonly Migration[] = [baseline, handoffs, participants];
+export const MIGRATIONS: readonly Migration[] = [baseline, handoffs, participants, subtickets];
 
 export const MIGRATIONS_TABLE = '_officepm_migrations';
 

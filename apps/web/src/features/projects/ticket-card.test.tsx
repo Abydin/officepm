@@ -40,3 +40,23 @@ describe('CardFace participants', () => {
     expect(stack.queryByRole('img', { name: 'Di Four' })).toBeNull();
   });
 });
+
+describe('CardFace sub-tickets', () => {
+  it('shows done over total on a parent, and nothing when there are no sub-tickets', () => {
+    const { rerender } = render(
+      <CardFace ticket={makeTicket({ progress: { done: 3, total: 5 } })} board={designBoard} />,
+    );
+    expect(screen.getByTitle('Sub-tickets done')).toHaveTextContent('Sub-tickets done 3/5');
+    rerender(
+      <CardFace ticket={makeTicket({ progress: { done: 0, total: 0 } })} board={designBoard} />,
+    );
+    expect(screen.queryByTitle('Sub-tickets done')).toBeNull();
+  });
+
+  it('marks a sub-ticket with its parent key, as plain text so the card holds no nested control', () => {
+    render(<CardFace ticket={makeTicket({ subticket_of: 'FOOD-DES-9' })} board={designBoard} />);
+    expect(screen.getByText(/sub of/)).toHaveTextContent('sub of FOOD-DES-9');
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+});

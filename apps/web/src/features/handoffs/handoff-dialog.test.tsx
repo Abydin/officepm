@@ -74,6 +74,27 @@ function setup(
   return { onClose, onDone, fetchMock, posts, user: userEvent.setup() };
 }
 
+function setupWith(ticket: ReturnType<typeof makeTicket>, target: string) {
+  const fetchMock = stubApi({
+    'GET /api/people': people,
+    'POST /api/tickets/FOOD-DES-1/handoff': () => jsonResponse(result('Done')),
+  });
+  render(
+    <QueryClientProvider client={createQueryClient({ queries: { retry: false } })}>
+      <HandoffDialog
+        request={{ ticket, board: designBoard, target }}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  const posts = () =>
+    fetchMock.mock.calls
+      .filter(([, init]) => init?.method === 'POST')
+      .map(([url, init]) => ({ url: String(url), body: JSON.parse(String(init?.body ?? '{}')) }));
+  return { posts, user: userEvent.setup() };
+}
+
 const dialog = () => screen.getByRole('dialog', { name: /FOOD-DES-1/ });
 
 describe('HandoffDialog', () => {
@@ -185,6 +206,53 @@ describe('HandoffDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Approve and move' }));
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(posts()[0]!.body.participant_ids).toEqual([3]);
+  });
+
+  describe('closing a parent whose sub-tickets are open', () => {
+    const parent = (done: number, total: number) =>
+      makeTicket({ status: 'Review', progress: { done, total } });
+
+    it('warns with the open count and keeps Approve off until Close anyway is ticked', async () => {
+      const { user, posts } = setupWith(parent(1, 3), 'Done');
+      const warning = within(screen.getByRole('group', { name: 'Open sub-tickets' }));
+      expect(warning.getByText('2 of 3 sub-tickets are still open.')).toBeVisible();
+      const confirm = screen.getByRole('button', { name: 'Approve and move' });
+      expect(confirm).toBeDisabled();
+      await user.click(warning.getByRole('checkbox', { name: 'Close anyway' }));
+      expect(confirm).toBeEnabled();
+      await user.click(confirm);
+      await waitFor(() => expect(posts()).toHaveLength(1));
+      expect(posts()[0]!.body).toMatchObject({ to_status: 'Done', close_anyway: true });
+    });
+
+    it('says "1 of 1 sub-ticket is" in the singular', () => {
+      setupWith(parent(0, 1), 'Done');
+      expect(screen.getByText('1 of 1 sub-ticket is still open.')).toBeVisible();
+    });
+
+    it('does not warn when every sub-ticket is done, when there are none, or when not closing', async () => {
+      const first = setupWith(parent(3, 3), 'Done');
+      expect(screen.queryByRole('group', { name: 'Open sub-tickets' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Approve and move' })).toBeEnabled();
+      await first.user.click(screen.getByRole('button', { name: 'Approve and move' }));
+      await waitFor(() => expect(first.posts()).toHaveLength(1));
+      expect(first.posts()[0]!.body.close_anyway).toBeUndefined();
+    });
+
+    it('does not warn for a move that is not into a done status', () => {
+      setupWith(makeTicket({ status: 'Backlog', progress: { done: 0, total: 2 } }), 'In Progress');
+      expect(screen.queryByRole('group', { name: 'Open sub-tickets' })).toBeNull();
+    });
+
+    it('does not warn when rejecting', async () => {
+      setupWith(parent(0, 2), 'Backlog');
+      expect(screen.queryByRole('group', { name: 'Open sub-tickets' })).toBeNull();
+    });
+
+    it('does not warn for a ticket already in a done status', () => {
+      setupWith(makeTicket({ status: 'Done', progress: { done: 0, total: 2 } }), 'Done');
+      expect(screen.queryByRole('group', { name: 'Open sub-tickets' })).toBeNull();
+    });
   });
 
   it('narrows the people to a chosen department and sends the department', async () => {

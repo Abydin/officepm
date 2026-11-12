@@ -16,6 +16,7 @@ import {
   type CommentCreate,
   type DodList,
   type ParticipantAdd,
+  type SubticketCreate,
   type Ticket,
   type TicketLinkCreate,
   type TicketPatch,
@@ -232,6 +233,16 @@ export function useRemoveParticipant(key: string) {
   return useMutation({
     mutationFn: (userId: number) =>
       api.delete(`${ticketPath(key)}/participants/${userId}`, OkSchema),
+    onSettled: () => invalidateTickets(queryClient),
+  });
+}
+
+/** Adds a sub-ticket on the parent's board. The server enforces one level and no epics. */
+export function useCreateSubticket(parentKey: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SubticketCreate) =>
+      api.post(`${ticketPath(parentKey)}/subtickets`, TicketSchema, input),
     onSettled: () => invalidateTickets(queryClient),
   });
 }

@@ -118,9 +118,13 @@ export const TicketSchema = z.object({
   due_date: IsoDate.nullable(),
   created_at: Timestamp,
   updated_at: Timestamp,
-  // Added after v1, optional so older payloads and fixtures still parse. Filled by
-  // GET /api/tickets and GET /api/tickets/:key only.
+  // Added after v1, all optional so older payloads and fixtures still parse. subticket_of is on
+  // every ticket the server returns; participants and progress are filled by GET /api/tickets and
+  // GET /api/tickets/:key only, and subtickets by the detail route only.
+  subticket_of: z.string().nullish(),
   participants: z.array(z.lazy(() => ParticipantSchema)).optional(),
+  progress: z.lazy(() => SubticketProgressSchema).optional(),
+  subtickets: z.array(z.lazy(() => SubticketSummarySchema)).optional(),
 });
 export type Ticket = z.infer<typeof TicketSchema>;
 
@@ -555,9 +559,10 @@ export const HandoffResultSchema = z.object({
 });
 export type HandoffResult = z.infer<typeof HandoffResultSchema>;
 
-// ---- participants -----------------------------------------------------------------
+// ---- participants and sub-tickets ------------------------------------------------
 // Added after v1. A ticket keeps its one primary assignee; participants are any number of
-// extra people, each with an optional short role label.
+// extra people, each with an optional short role label. A sub-ticket is a ticket with
+// subticket_of set, one level deep (a sub-ticket cannot have its own sub-tickets).
 
 export const PARTICIPANT_ROLE_MAX = 30;
 export const MAX_HANDOFF_PARTICIPANTS = 20;
@@ -586,3 +591,31 @@ export const ParticipantAddSchema = z.object({
   role: z.union([ParticipantRoleSchema, z.null()]).optional(),
 });
 export type ParticipantAdd = z.infer<typeof ParticipantAddSchema>;
+
+export const SubticketSummarySchema = z.object({
+  key: z.string(),
+  title: z.string(),
+  status: z.string(),
+  type: z.string(),
+  /** The assignee's name, or null. Never an email. */
+  assignee_name: z.string().nullable(),
+});
+export type SubticketSummary = z.infer<typeof SubticketSummarySchema>;
+
+export const SubticketProgressSchema = z.object({
+  done: z.number().int(),
+  total: z.number().int(),
+});
+export type SubticketProgress = z.infer<typeof SubticketProgressSchema>;
+
+/** POST /api/tickets/:key/subtickets. The board is the parent's. */
+export const SubticketCreateSchema = z.object({
+  title: z.string().trim().min(1),
+  type: z.string().optional(),
+  assignee: z.string().nullish(),
+});
+export type SubticketCreate = z.infer<typeof SubticketCreateSchema>;
+
+/** PUT /api/tickets/:key/subticket-of. null makes the ticket a normal ticket again. */
+export const SubticketOfSchema = z.object({ parent_key: z.union([z.string().min(1), z.null()]) });
+export type SubticketOf = z.infer<typeof SubticketOfSchema>;

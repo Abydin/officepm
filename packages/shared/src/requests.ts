@@ -96,6 +96,8 @@ export const HandoffRequestSchema = z.object({
   attachment_ids: z.array(z.string()).nullish(),
   // Everyone else the handoff nudges. They become participants (see ParticipantSchema).
   participant_ids: z.array(z.number().int()).max(MAX_HANDOFF_PARTICIPANTS).nullish(),
+  // Confirms closing a parent whose sub-tickets are still open.
+  close_anyway: z.boolean().nullish(),
 });
 
 export const SettingsPatchRequestSchema = z.object({

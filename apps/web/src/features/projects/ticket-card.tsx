@@ -76,6 +76,7 @@ export function CardFace({
       className={cn(
         'rounded-lg border border-line bg-raised p-2.5 text-left',
         ticket.blocked && 'border-l-[3px] border-l-err',
+        ticket.subticket_of && 'border-dashed',
         lifted && 'shadow-pop',
       )}
     >
@@ -83,6 +84,11 @@ export function CardFace({
         <span className="font-mono text-[11px] text-dim">{ticket.key}</span>
         {ticket.blocked && <Flag tone="red">Blocked</Flag>}
         {overdue && <Flag tone="amber">Overdue</Flag>}
+        {ticket.subticket_of && (
+          <span className="rounded border border-dashed border-line-strong px-1.5 text-[10px] leading-[14px] text-dim">
+            sub of <span className="font-mono">{ticket.subticket_of}</span>
+          </span>
+        )}
         <span className="flex-1" />
         <PriorityMark priority={ticket.priority} />
       </div>
@@ -121,6 +127,15 @@ export function CardFace({
         {ticket.appetite && (
           <span className="rounded border border-line px-1.5 text-[11px] text-dim">
             {ticket.appetite}
+          </span>
+        )}
+        {ticket.progress && ticket.progress.total > 0 && (
+          <span
+            title="Sub-tickets done"
+            className="rounded bg-hover px-1.5 font-mono text-[11px] leading-[18px] font-semibold"
+          >
+            <span className="sr-only">Sub-tickets done </span>
+            {ticket.progress.done}/{ticket.progress.total}
           </span>
         )}
         <span className="flex-1" />

@@ -48,3 +48,21 @@ export async function keyboardDrag(page: Page, key: string, through: string[]) {
 
 /** Demo users share one password; Sam is not an admin. */
 export const SAM = { email: 'sam.adeyemi@officepm.demo', password: DEMO.password };
+
+/**
+ * Deletes tickets a test made, and their sub-tickets. The specs share one database and the
+ * board drag tests grab seed cards by position, so tests that add many cards clean up after
+ * themselves instead of pushing the seed cards off the screen.
+ */
+export async function removeTickets(page: Page, keys: string[]) {
+  const all = (await (
+    await page.request.get('/api/tickets?project=food&board=design')
+  ).json()) as Array<{
+    key: string;
+    subticket_of?: string | null;
+  }>;
+  const doomed = all
+    .filter((t) => keys.includes(t.key) || (t.subticket_of && keys.includes(t.subticket_of)))
+    .map((t) => t.key);
+  for (const key of doomed) await page.request.delete(`/api/tickets/${key}`);
+}

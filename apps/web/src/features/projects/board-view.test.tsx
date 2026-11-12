@@ -62,6 +62,29 @@ describe('board view', () => {
     expect(within(column('In Progress')).getByText(/of 3 max/)).toBeInTheDocument();
   });
 
+  it('counts top-level tickets in the header and reports sub-tickets apart, showing them as cards', async () => {
+    setup([
+      makeTicket({ title: 'Parent', status: 'Done', progress: { done: 1, total: 2 } }),
+      makeTicket({
+        id: 2,
+        key: 'FOOD-DES-2',
+        title: 'Kid one',
+        status: 'Done',
+        subticket_of: 'FOOD-DES-1',
+      }),
+      makeTicket({ id: 3, key: 'FOOD-DES-3', title: 'Kid two', subticket_of: 'FOOD-DES-1' }),
+      makeTicket({ id: 4, key: 'FOOD-DES-4', title: 'Other', status: 'Review' }),
+    ]);
+    renderApp('/projects/food/boards/design');
+    expect(await screen.findByText('2 tickets · 1 done · 2 sub-tickets')).toBeVisible();
+    // The sub-tickets are still cards on the board, marked as such.
+    const backlog = column('Backlog');
+    expect(within(backlog).getByRole('button', { name: /FOOD-DES-3.*Kid two/ })).toHaveTextContent(
+      'sub of FOOD-DES-1',
+    );
+    expect(within(column('Done')).getByRole('button', { name: /Parent/ })).toHaveTextContent('1/2');
+  });
+
   it('opens the handoff dialog instead of moving, and Cancel leaves the card where it was', async () => {
     const fetchMock = setup([makeTicket()]);
     const user = userEvent.setup();

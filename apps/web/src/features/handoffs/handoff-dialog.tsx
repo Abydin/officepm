@@ -99,13 +99,26 @@ export function HandoffDialog({
   const [assignee, setAssignee] = useState('');
   const [alsoIds, setAlsoIds] = useState<number[]>([]);
   const [files, setFiles] = useState<File[]>([]);
+  const [closeAnyway, setCloseAnyway] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const pasted = useRef(0);
   const picker = useRef<HTMLInputElement>(null);
 
   const targets = decision === 'approve' ? options.forward : options.back;
   const rejecting = decision === 'reject';
-  const canSend = Boolean(to) && (!rejecting || reason.trim() !== '') && !handoff.isPending;
+  // Closing a parent while some of its sub-tickets are open is a warning, not a block: the
+  // person has to say so. The server asks for the same confirmation (close_anyway).
+  const openSubtickets = ticket.progress ? ticket.progress.total - ticket.progress.done : 0;
+  const closing =
+    !rejecting &&
+    openSubtickets > 0 &&
+    board.done_statuses.includes(to) &&
+    !board.done_statuses.includes(ticket.status);
+  const canSend =
+    Boolean(to) &&
+    (!rejecting || reason.trim() !== '') &&
+    (!closing || closeAnyway) &&
+    !handoff.isPending;
 
   const everyone: Person[] = people.data ?? [];
   const departments = [
@@ -155,6 +168,7 @@ export function HandoffDialog({
           ...(rejecting ? { reason: reason.trim() } : {}),
           ...(assignee ? { assignee_id: Number(assignee) } : {}),
           ...(alsoIds.length ? { participant_ids: alsoIds } : {}),
+          ...(closing ? { close_anyway: true } : {}),
           ...(department ? { department } : {}),
           ...(note.trim() ? { note: note.trim() } : {}),
         },
@@ -235,6 +249,31 @@ export function HandoffDialog({
               >
                 {notice}
               </p>
+            )}
+
+            {closing && (
+              <div
+                role="group"
+                aria-label="Open sub-tickets"
+                className="rounded-md border border-warn bg-warn-soft px-3 py-2"
+              >
+                <p className="m-0 font-semibold">
+                  {openSubtickets} of {ticket.progress!.total} sub-ticket
+                  {ticket.progress!.total === 1 ? ' is' : 's are'} still open.
+                </p>
+                <p className="m-0 mt-1 text-[13px]">
+                  Closing {ticket.key} does not close them. Tick the box to close it anyway.
+                </p>
+                <label className="mt-2 flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={closeAnyway}
+                    onChange={(e) => setCloseAnyway(e.target.checked)}
+                    className="size-4 accent-[var(--accent)]"
+                  />
+                  Close anyway
+                </label>
+              </div>
             )}
 
             <fieldset className="m-0 min-w-0 border-0 p-0">

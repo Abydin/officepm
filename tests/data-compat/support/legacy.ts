@@ -162,7 +162,7 @@ export const V2_ADDITIONS = {
   /** New tables, with their indexes and automatic primary-key indexes. */
   tables: ['ticket_handoffs', 'handoff_reads', 'ticket_participants', 'handoff_recipients'],
   /** New nullable columns on v1 tables. */
-  columns: { users: ['department'] } as Record<string, string[]>,
+  columns: { users: ['department'], tickets: ['subticket_of'] } as Record<string, string[]>,
 };
 
 const isExtra = (name: string) =>

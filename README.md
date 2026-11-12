@@ -145,6 +145,21 @@ you are listed but are not the assignee appear on My Tickets under Also on; the 
 list is unchanged. Anyone signed in can add or remove people, as anyone signed in can edit
 a ticket today: v1 has no per-ticket permissions and this adds none.
 
+**Sub-tickets.** The hierarchy is epic, ticket, sub-ticket, and a sub-ticket is one level
+deep: a sub-ticket cannot have its own sub-tickets, an epic cannot be a sub-ticket or hold
+them (an epic holds tickets, through the existing Parent ticket field), a ticket cannot be its
+own parent, and parent and child are in one project. In the ticket drawer, a Sub-tickets
+section adds one when you type a title and press Enter, lists each with its key, status and
+assignee, and opens it on a click; a sub-ticket's drawer has a "sub of KEY" button back to its
+parent. A sub-ticket is an ordinary ticket in every other way: its own key from the board's
+numbering, the board's statuses and workflow rules, its own assignee, people and handoffs. On
+the board the parent card shows done over total (3/5), and a sub-ticket card is dashed and says
+"sub of KEY". The board header counts top-level tickets and says how many sub-tickets there are
+on top of them, so the same work is not counted twice. Approving a parent into a done status
+while sub-tickets are open shows how many, and needs Close anyway to be ticked: a warning, not
+a block. Deleting a parent keeps its sub-tickets as ordinary tickets, as deleting an epic does
+for its children.
+
 **Real-time.** Server-Sent Events, so a ticket someone else moves appears
 immediately without polling.
 
@@ -191,7 +206,7 @@ handler that drifts from the contract fails a test rather than a screen.
 ### API additions since v1
 
 All additive: v1's routes and response shapes are unchanged, and a v1 server still runs
-on the migrated database (migration `0001-handoffs`: one nullable column and two tables; `0002-participants`: two more tables).
+on the migrated database (migration `0001-handoffs`: one nullable column and two tables; `0002-participants`: two more tables; `0003-subtickets`: one nullable column on `tickets`).
 
 | Route | Who | What |
 |---|---|---|
@@ -211,6 +226,18 @@ on the migrated database (migration `0001-handoffs`: one nullable column and two
 also takes `participant_ids` (up to 20 user ids): they become participants, keep any role they
 already had, and get the unread nudge. The event stream gains `ticket.participants.changed`,
 which carries only the ticket key.
+
+| `POST /api/tickets/:key/subtickets` | signed in | `{ title, type?, assignee? }`. Creates a ticket on the parent's board with `subticket_of` set to `:key`. `type` defaults to `task` (else the first type that is not `epic`). 201 with the ticket. 400 for a missing title, an unknown type or `epic`; 404 for an unknown parent; 409 when the parent is an epic or is itself a sub-ticket |
+| `PUT /api/tickets/:key/subticket-of` | signed in | `{ parent_key: string or null }`. Makes an existing ticket a sub-ticket of another, or null to make it an ordinary ticket again. 409 for: own parent, an epic on either side, a third level (the parent is a sub-ticket, or the ticket already has sub-tickets), or a parent in another project. Parent and child may be on different boards of one project. The web client does not use this route yet |
+
+`GET /api/tickets/:key` adds `subtickets` (`[{ key, title, status, type, assignee_name }]`, oldest
+first, and `assignee_name` is a name or null, never an email) and `progress` (`{ done, total }`, done
+meaning the sub-ticket's status is in its board's `done_statuses`). `GET /api/tickets` adds `progress`
+to each ticket. Every ticket the server returns has `subticket_of` (a key or null). `POST
+/api/tickets/:key/handoff` also takes `close_anyway: true`, which a move of a parent into a done
+status needs while it has open sub-tickets (otherwise 409 with the count). `PATCH /api/tickets/:key`
+and the GitHub webhooks are unchanged, so they can still move a parent to Done with open sub-tickets;
+the one new refusal is `PATCH` of `type` to `epic` on a ticket that is, or has, sub-tickets (409).
 
 What this does not hide: the ticket's `assignee` is still an email on every ticket, as in v1,
 and a handoff that names an assignee still returns that email. The participants lists, the

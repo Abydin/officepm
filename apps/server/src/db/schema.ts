@@ -60,6 +60,8 @@ export const tickets = sqliteTable(
     priority: text('priority'),
     labels: text('labels'),
     due_date: text('due_date'),
+    // Added by migration 0003. The ticket a sub-ticket belongs to; parent_key stays the epic.
+    subticket_of: text('subticket_of'),
   },
   (t) => [
     index('idx_tickets_board').on(t.project_slug, t.board_slug),

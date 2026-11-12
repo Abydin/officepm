@@ -7,7 +7,9 @@ export function ErrorAlert({ className, ...props }: HTMLAttributes<HTMLDivElemen
     <div
       role="alert"
       className={cn(
-        'rounded-md border border-err bg-err-soft px-3 py-2 text-[13px] text-err',
+        // Plain text colour: err-coloured text on the err tint misses 4.5:1 in one theme or the other, so the
+        // border carries the colour, as the card flags do.
+        'rounded-md border border-err bg-err-soft px-3 py-2 text-[13px] text-fg',
         className,
       )}
       {...props}

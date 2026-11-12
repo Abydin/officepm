@@ -8,7 +8,7 @@ export interface EpicRow {
   percent: number;
 }
 
-/** Each epic on the board with the tickets whose parent_key points at it. */
+/** Each epic on the board with the tickets whose parent_key points at it (sub-tickets excluded). */
 export function epicRows(
   tickets: readonly Ticket[],
   board: Pick<Board, 'done_statuses'>,
@@ -16,7 +16,8 @@ export function epicRows(
   return tickets
     .filter((t) => t.level === 'epic')
     .map((epic) => {
-      const children = tickets.filter((t) => t.parent_key === epic.key);
+      // A sub-ticket can sit in an epic too, but it is counted through its parent, not twice.
+      const children = tickets.filter((t) => t.parent_key === epic.key && !t.subticket_of);
       const done = children.filter((t) => board.done_statuses.includes(t.status)).length;
       return {
         epic,

@@ -34,6 +34,8 @@ export interface HandoffInput {
   assignee_id?: number;
   /** More people to nudge. They become participants on the ticket. */
   participant_ids?: number[];
+  /** Confirms closing a parent whose sub-tickets are still open. */
+  close_anyway?: boolean;
   department?: string;
   note?: string;
 }

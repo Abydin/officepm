@@ -19,6 +19,22 @@ describe('epicRows', () => {
     expect(rows[0]?.children.map((c) => c.key)).toEqual(['S-1', 'S-2', 'S-3']);
   });
 
+  it('does not count a sub-ticket that sits in the epic, because its parent already counts it', () => {
+    const tickets = [
+      makeTicket({ key: 'E-1', level: 'epic' }),
+      makeTicket({
+        key: 'S-1',
+        parent_key: 'E-1',
+        status: 'Done',
+        progress: { done: 1, total: 1 },
+      }),
+      makeTicket({ key: 'S-1a', parent_key: 'E-1', status: 'Done', subticket_of: 'S-1' }),
+    ];
+    const rows = epicRows(tickets, board);
+    expect(rows[0]!.children.map((c) => c.key)).toEqual(['S-1']);
+    expect(rows[0]).toMatchObject({ done: 1, total: 1 });
+  });
+
   it('shows an epic with no children as 0 percent, not NaN', () => {
     const rows = epicRows([makeTicket({ key: 'E-1', level: 'epic' })], board);
     expect(rows[0]).toMatchObject({ done: 0, total: 0, percent: 0 });

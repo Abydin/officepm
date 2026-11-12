@@ -46,7 +46,11 @@ export function BoardFrame() {
   }
 
   const b = board.data;
-  const doneCount = tickets.data?.filter((t) => b.done_statuses.includes(t.status)).length ?? 0;
+  // Sub-tickets are on the board as cards but not in the totals: their parent's 3/5 already
+  // counts them, so counting both would show the same work twice.
+  const topLevel = tickets.data?.filter((t) => !t.subticket_of) ?? [];
+  const subCount = (tickets.data?.length ?? 0) - topLevel.length;
+  const doneCount = topLevel.filter((t) => b.done_statuses.includes(t.status)).length;
   const tabs = boardTabs(b);
   const typeForNew = b.types[0];
 
@@ -72,7 +76,8 @@ export function BoardFrame() {
         <span className="font-mono text-dim">{b.prefix}</span>
         {tickets.data && (
           <span className="ml-auto text-dim">
-            {tickets.data.length} tickets · {doneCount} done
+            {topLevel.length} tickets · {doneCount} done
+            {subCount > 0 && ` · ${subCount} sub-ticket${subCount === 1 ? '' : 's'}`}
           </span>
         )}
       </header>

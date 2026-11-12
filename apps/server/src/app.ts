@@ -18,7 +18,9 @@ import { sprintRoutes } from './modules/sprints/routes.js';
 import { createSprintService } from './modules/sprints/service.js';
 import { staticRoutes } from './modules/static/routes.js';
 import { participantRoutes } from './modules/participants/routes.js';
+import { subticketRoutes } from './modules/subtickets/routes.js';
 import { ticketRoutes } from './modules/tickets/routes.js';
+import { createTicketService } from './modules/tickets/service.js';
 import { userRoutes } from './modules/users/routes.js';
 
 /** Builds the whole HTTP app over an already-initialised context. */
@@ -45,6 +47,7 @@ export function createApp(ctx: AppContext): Hono<AppEnv> {
 
   const comments = createCommentService(ctx);
   const sprints = createSprintService(ctx);
+  const tickets = createTicketService(ctx);
 
   const api = new Hono<AppEnv>({ strict: false });
   // Liveness for the container healthcheck and uptime checks: no session needed, and it
@@ -55,8 +58,9 @@ export function createApp(ctx: AppContext): Hono<AppEnv> {
   });
   api.route('/', authRoutes(ctx));
   api.route('/', projectRoutes(ctx));
-  api.route('/', ticketRoutes(ctx));
+  api.route('/', ticketRoutes(ctx, tickets));
   api.route('/', participantRoutes(ctx));
+  api.route('/', subticketRoutes(ctx, tickets));
   api.route('/', commentRoutes(ctx, comments));
   api.route('/', handoffRoutes(ctx, comments));
   api.route('/', sprintRoutes(ctx, sprints));

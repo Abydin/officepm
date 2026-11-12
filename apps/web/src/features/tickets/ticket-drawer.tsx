@@ -33,6 +33,7 @@ import {
   LinksSection,
 } from './drawer-sections';
 import { PeopleSection } from './people-section';
+import { SubticketsSection } from './subtickets-section';
 import { parseEmail, usePeople } from './people';
 import { useTicketDrawer } from './use-ticket-drawer';
 
@@ -112,7 +113,7 @@ function DrawerBody({
   board: Board;
   focusTitle: boolean;
 }) {
-  const { close } = useTicketDrawer();
+  const { close, open } = useTicketDrawer();
   const update = useUpdateTicket(ticket.key);
   const remove = useDeleteTicket();
   const [version, setVersion] = useState(0);
@@ -161,6 +162,16 @@ function DrawerBody({
         <span className="font-mono font-bold">{ticket.key}</span>
         {ticket.level && ticket.level !== ticket.type && <Badge>{ticket.level}</Badge>}
         <Badge>{ticket.type}</Badge>
+        {ticket.subticket_of && (
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={`sub of ${ticket.subticket_of}, open parent`}
+            onClick={() => open(ticket.subticket_of!)}
+          >
+            sub of <span className="font-mono">{ticket.subticket_of}</span>
+          </Button>
+        )}
         <span role="status" className="text-xs text-dim">
           {update.isPending ? 'Saving...' : ''}
         </span>
@@ -407,6 +418,8 @@ function DrawerBody({
             />
           </div>
         </section>
+
+        <SubticketsSection ticket={ticket} />
 
         <PeopleSection ticket={ticket} />
 

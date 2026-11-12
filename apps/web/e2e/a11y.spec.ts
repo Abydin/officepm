@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { SAM, signIn } from './helpers';
+import { removeTickets, SAM, signIn } from './helpers';
 
 // Reports every violation with its rule, impact and the elements it hit, so a
 // failure says what to fix. The page is checked in both themes.
@@ -230,6 +230,54 @@ for (const theme of ['dark', 'light'] as const) {
       await expect(sam.getByRole('table', { name: 'Also on' })).toContainText(key);
       expect(await violations(sam)).toEqual([]);
       await context.close();
+      await removeTickets(page, [key]);
+    });
+
+    test('sub-tickets: drawer, cards and the close warning', async ({ page }) => {
+      const created = await page.request.post('/api/tickets', {
+        data: {
+          project_slug: 'food',
+          board_slug: 'design',
+          title: `A11y subs ${theme}`,
+          type: 'task',
+          // Review, not In Progress: that column has a WIP limit, and going over it shows a badge with its own contrast problem.
+          status: 'Review',
+        },
+      });
+      const { key } = (await created.json()) as { key: string };
+      for (const title of ['First child', 'Second child']) {
+        await page.request.post(`/api/tickets/${key}/subtickets`, { data: { title } });
+      }
+      await page.goto(`/#/projects/food/boards/design?t=${key}`);
+      const drawer = page.getByRole('dialog');
+      await expect(drawer.getByRole('list', { name: 'Sub-tickets' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+
+      // The depth rule error showing inside a sub-ticket's drawer.
+      await drawer.getByRole('button', { name: /First child/ }).click();
+      await expect(drawer.getByLabel('Title', { exact: true })).toHaveValue('First child');
+      await drawer.getByRole('textbox', { name: 'New sub-ticket title' }).fill('Too deep');
+      await drawer.getByRole('textbox', { name: 'New sub-ticket title' }).press('Enter');
+      await expect(drawer.getByRole('alert')).toContainText('one level deep');
+      expect(await violations(page)).toEqual([]);
+
+      // The handoff dialog with the warning.
+      await drawer.getByRole('button', { name: `sub of ${key}, open parent` }).click();
+      await expect(drawer.getByLabel('Title', { exact: true })).toHaveValue(`A11y subs ${theme}`);
+      await drawer.getByLabel('Status').selectOption('Done');
+      await expect(page.getByRole('dialog', { name: `Move ${key}` })).toContainText('still open');
+      expect(await violations(page)).toEqual([]);
+      await page
+        .getByRole('dialog', { name: `Move ${key}` })
+        .getByRole('button', { name: 'Cancel' })
+        .click();
+
+      // The board with a parent card (1/2 style count) and sub-ticket cards.
+      await drawer.getByRole('button', { name: 'Close ticket' }).click();
+      await expect(page.locator(`[data-ticket-key="${key}"]`)).toContainText('0/2');
+      await expect(page.getByText(/sub of /).first()).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+      await removeTickets(page, [key]);
     });
 
     test('my tickets with something handed to me', async ({ page, browser }) => {

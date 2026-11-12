@@ -1,17 +1,21 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { card, signIn } from './helpers';
+import { card, removeTickets, signIn } from './helpers';
 
 const TUNDE = { email: 'tunde.bakare@officepm.demo', password: 'demo-password' };
 const SAM = { email: 'sam.adeyemi@officepm.demo', password: 'demo-password' };
 
 // Backlog, not In Progress: the Design board's In Progress has a WIP limit of 3, and the a11y specs
 // check the board in both themes, where an over-limit badge has a contrast problem of its own.
+const made: string[] = [];
+
 async function newTicket(page: Page, title: string, status = 'Backlog') {
   const res = await page.request.post('/api/tickets', {
     data: { project_slug: 'food', board_slug: 'design', title, type: 'task', status },
   });
   expect(res.status()).toBe(201);
-  return ((await res.json()) as { key: string }).key;
+  const key = ((await res.json()) as { key: string }).key;
+  made.push(key);
+  return key;
 }
 
 async function asPerson(browser: Browser, who: { email: string; password: string }) {
@@ -29,6 +33,10 @@ async function choosePerson(page: Page, name: string) {
 
 test.beforeEach(async ({ page }) => {
   await signIn(page);
+});
+
+test.afterEach(async ({ page }) => {
+  await removeTickets(page, made.splice(0));
 });
 
 test('adds a person with a role in the drawer, sees them on the card, then removes them', async ({

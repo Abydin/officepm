@@ -632,3 +632,48 @@ comments and handoffs.
   with a primary radio would have changed every existing handoff test and e2e step for no gain.
 - My Tickets. `GET /api/my-tickets/participating` is a new endpoint, so the assignee filter that
   conformance pins is unchanged. The page shows it as a second table, Also on, only when it is not empty.
+
+Sub-tickets. Epic > ticket > sub-ticket, and one level only. Jira has a single level of sub-task, and
+ClickUp and Zenhub both warn against deep nesting; a plain adjacency list (one nullable parent column)
+needs no recursion at depth one, so none is written.
+
+- Column, not `parent_key`. `tickets.parent_key` already exists: it is the epic relation, free text, set
+  by plain `PATCH`, read by the Epics screen. Reusing it would make "belongs to an epic" and "is a
+  sub-ticket" one thing, so a sub-ticket could not also sit in an epic and every epic child list would
+  need a type filter. Migration `0003-subtickets` adds a separate nullable `tickets.subticket_of`
+  (`ALTER ... ADD COLUMN`, guarded, no rewritten rows, v1 still boots). No index: the tables are small and
+  the list query reads every ticket anyway.
+- Rules, in one function. `subticketViolation` in `packages/shared/src/subtickets.ts` is the only place
+  that knows them, and the server's two entry points call it: create (`POST .../subtickets`, parent-side
+  rules, since the child does not exist yet) and attach (`PUT .../subticket-of`). Own parent, an epic on
+  either side, parent already a sub-ticket, child already a parent, different project: each a 409. An epic
+  as the new sub-ticket's type is a 400 at create (a bad request) and a 409 at attach (an existing ticket in
+  the wrong state). The web client has no copy of the rules; it shows the server's message.
+- Why create is on the parent's board. Numbering is per board prefix and a sub-ticket takes a normal key,
+  so it is created through the ticket service's own create. Attach can span boards of one project.
+- Project move. There is no way to change a ticket's project or board (`PATCH` ignores both fields), so
+  "move the parent across projects" cannot happen and nothing had to handle it. If such a route is ever
+  added it has to move or refuse children.
+- Delete. Deleting a parent sets its sub-tickets' `subticket_of` to null and keeps them, inside the same
+  transaction: what the code already does for epic children (`parent_key`). Deleting them with the parent
+  would have been the only destructive choice available.
+- One refusal added to plain `PATCH`: `type` to `epic` on a ticket that is a sub-ticket or has them is a 409,
+  because otherwise `PATCH` could break the hierarchy the new routes protect. Every other `PATCH`, and the
+  webhooks, behave as before and can close a parent with open children.
+- Closing a parent. `planHandoff` is unchanged; the handoff service adds a check after it: a move from a
+  not-done status into a done one (`board.done_statuses`) with open sub-tickets needs `close_anyway: true`,
+  else 409 with the count. It is checked on the server as well as in the dialog so a stale dialog (a
+  sub-ticket added after it opened) cannot skip it. Warn, not block: the dialog's Close anyway box enables the
+  button. Reject is never warned.
+- Detail and list. `subtickets` is on the detail only; `progress` is on both (the board card shows 3/5 from
+  the list). Children are read with one `IN (...)` query per list, not one per ticket.
+- Counting. The board header shows top-level tickets and, apart, how many sub-tickets: a parent's 3/5 already
+  counts its children, and adding them to "N tickets" as well would count the same work twice. The Epics
+  screen leaves sub-tickets out of an epic's children for the same reason. Not changed: the Overview and
+  dashboard counts, burndown, velocity and standup, which read all tickets, so a sub-ticket counts there as
+  a ticket, and a parent and its children that both carry points count both. No test showed them breaking
+  and the task said to leave them; if points are set on both levels, the totals include both.
+- UI notes. A sub-ticket card is marked with plain text "sub of KEY" (and a dashed border), not a link: the
+  card is a `role=button` for dragging, and a control inside it fails axe's nested-interactive rule. The link
+  back to the parent is in the drawer header. The drawer's Sub-tickets section is offered on every ticket on
+  purpose, so the depth rule's refusal appears when someone tries it. `PUT .../subticket-of` has no UI.
