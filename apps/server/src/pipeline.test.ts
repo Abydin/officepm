@@ -464,6 +464,38 @@ describe('pipeline', () => {
       expect(refused.status).toBe(409);
       expect((await pipelineOf(epic.key)).current).toBe('Product');
     });
+
+    it('refuses a phase sent in the same PATCH that makes the ticket an epic', async () => {
+      const make = async () => {
+        const res = await admin.call('POST', '/api/tickets', {
+          project_slug: 'food',
+          board_slug: 'eng',
+          title: 'Becoming an epic',
+          type: 'task',
+        });
+        expect(res.status).toBe(201);
+        return res.json as Ticket;
+      };
+      const byType = await make();
+      const a = await admin.call('PATCH', `/api/tickets/${byType.key}`, {
+        type: 'epic',
+        phase: 'Design',
+      });
+      expect(a.status).toBe(409);
+      const byLevel = await make();
+      const b = await admin.call('PATCH', `/api/tickets/${byLevel.key}`, {
+        level: 'epic',
+        phase: 'Design',
+      });
+      expect(b.status).toBe(409);
+      // Refused whole: neither the epic-ness nor the phase was written.
+      for (const t of [byType, byLevel]) {
+        const now = (await admin.call('GET', `/api/tickets/${t.key}`)).json;
+        expect(now.type).toBe('task');
+        expect(now.level).not.toBe('epic');
+        expect(now.phase).toBeNull();
+      }
+    });
   });
 
   describe('tagging tickets under a feature', () => {

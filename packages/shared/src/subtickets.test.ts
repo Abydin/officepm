@@ -30,6 +30,14 @@ describe('subticketViolation', () => {
     expect(subticketViolation(node({ key: 'A-2' }), node({ type: 'epic' }))).toMatch(/epic/);
   });
 
+  it('treats a level of epic as an epic, as a sub-ticket and as a parent', () => {
+    expect(subticketViolation(node({ key: 'A-2', level: 'epic' }), node())).toMatch(/epic/);
+    expect(subticketViolation(node({ key: 'A-2' }), node({ level: 'epic' }))).toMatch(/epic/);
+    expect(
+      subticketViolation(node({ key: 'A-2', level: 'task' }), node({ level: null })),
+    ).toBeNull();
+  });
+
   it('allows one level only: no sub-ticket under a sub-ticket', () => {
     const msg = subticketViolation(node({ key: 'A-3' }), node({ key: 'A-2', subticket_of: 'A-1' }));
     expect(msg).toMatch(/one level/);

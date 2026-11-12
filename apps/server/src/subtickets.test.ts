@@ -365,6 +365,31 @@ describe('sub-tickets', () => {
     ).toBe(200);
   });
 
+  it('treats a level of epic as an epic: no sub-ticket role, by PATCH, attach or create', async () => {
+    const patch = (key: string, body: Record<string, unknown>) =>
+      admin.call('PATCH', `/api/tickets/${key}`, body);
+    const parent = await newTicket();
+    const child = (await sub(parent.key, { title: 'child' })).json as Ticket;
+    // A sub-ticket, or a ticket with sub-tickets, cannot be given the epic level.
+    expect((await patch(child.key, { level: 'epic' })).status).toBe(409);
+    expect((await patch(parent.key, { level: 'epic' })).status).toBe(409);
+    expect((await detail(child.key)).level).not.toBe('epic');
+    expect((await detail(parent.key)).level).not.toBe('epic');
+    // A ticket that already has the epic level cannot be attached or hold sub-tickets.
+    const lvl = await newTicket({ title: 'Level epic' });
+    expect((await patch(lvl.key, { level: 'epic' })).status).toBe(200);
+    const loose = await newTicket({ title: 'Loose' });
+    expect(
+      (await maya.call('PUT', `/api/tickets/${lvl.key}/subticket-of`, { parent_key: loose.key }))
+        .status,
+    ).toBe(409);
+    expect(
+      (await maya.call('PUT', `/api/tickets/${loose.key}/subticket-of`, { parent_key: lvl.key }))
+        .status,
+    ).toBe(409);
+    expect((await sub(lvl.key, { title: 'x' })).status).toBe(409);
+  });
+
   describe('closing a parent in a handoff', () => {
     const approveToDone = (key: string, extra: Record<string, unknown> = {}) =>
       maya.call('POST', `/api/tickets/${key}/handoff`, {

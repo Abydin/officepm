@@ -1,7 +1,6 @@
 import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import {
   DodPatchRequestSchema,
-  EPIC_TYPE,
   TicketCreateRequestSchema,
   TicketPatchRequestSchema,
   type DodItem,
@@ -182,8 +181,15 @@ export function createTicketService(ctx: AppContext) {
       if (extrasErr) throw badRequest(extrasErr);
 
       const set: Record<string, unknown> = {};
+      // Whether the ticket is an epic once this patch is applied: a type or level sent in the
+      // same request counts, so tagging a phase while becoming an epic is refused too.
+      const wasEpic = isEpicRow(existing);
+      const becomesEpic = isEpicRow({
+        level: 'level' in body ? (body.level as string) : existing.level,
+        type: 'type' in body ? (body.type as string) : existing.type,
+      });
       // The tags are checked against the ticket's project, and an epic's phase is refused.
-      const tags = pipeline.normaliseTags(existing.project_slug, body, isEpicRow(existing));
+      const tags = pipeline.normaliseTags(existing.project_slug, body, becomesEpic);
       for (const field of Object.keys(body)) {
         if (!TICKET_PATCHABLE.has(field)) continue;
         if (field === 'phase' || field === 'department') {
@@ -205,7 +211,7 @@ export function createTicketService(ctx: AppContext) {
           throw badRequest('type must be one of: ' + found.board.types.join(', '));
         }
         // An epic is neither a sub-ticket nor a parent of them (see shared/subtickets.ts).
-        if (field === 'type' && body.type === EPIC_TYPE && existing.type !== EPIC_TYPE) {
+        if ((field === 'type' || field === 'level') && becomesEpic && !wasEpic) {
           const parentOrChild =
             existing.subticket_of ||
             orm

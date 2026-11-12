@@ -28,6 +28,7 @@ export function createSubticketService(ctx: AppContext, ticketService: TicketSer
   const node = (row: TicketRow): SubticketNode => ({
     key: row.key,
     type: row.type,
+    level: row.level,
     project_slug: row.project_slug,
     subticket_of: row.subticket_of,
     has_subtickets: !!orm

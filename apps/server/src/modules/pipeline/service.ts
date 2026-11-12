@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   DEFAULT_PIPELINE,
   DepartmentSchema,
-  EPIC_TYPE,
+  isEpic,
   MAX_PIPELINE_PHASES,
   normalisePhaseEdit,
   PipelinePutSchema,
@@ -20,8 +20,7 @@ import { createRelations } from '../tickets/relations.js';
 import { serializeTicket, type TicketRow } from '../tickets/serialize.js';
 
 /** An epic is a ticket whose level or type says so (agile boards use level, others type). */
-export const isEpicRow = (row: { level: string | null; type: string }) =>
-  row.level === 'epic' || row.type === EPIC_TYPE;
+export const isEpicRow = (row: { level: string | null; type: string }) => isEpic(row);
 
 export function createPipelineService(ctx: AppContext) {
   const { orm, raw } = ctx.db;

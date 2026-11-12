@@ -6,6 +6,8 @@
 export interface SubticketNode {
   key: string;
   type: string;
+  /** The agile level, when the board has one. A level of 'epic' makes an epic like the type does. */
+  level?: string | null;
   project_slug: string;
   /** The key of the ticket this one is a sub-ticket of, if any. */
   subticket_of: string | null;
@@ -14,6 +16,11 @@ export interface SubticketNode {
 }
 
 export const EPIC_TYPE = 'epic';
+export const EPIC_LEVEL = 'epic';
+
+/** An epic is a ticket whose level or type says so (agile boards use level, others type). */
+export const isEpic = (t: { level?: string | null; type: string }): boolean =>
+  t.level === EPIC_LEVEL || t.type === EPIC_TYPE;
 
 /**
  * Why `child` cannot become a sub-ticket of `parent`, or null when it can. Every
@@ -21,8 +28,8 @@ export const EPIC_TYPE = 'epic';
  */
 export function subticketViolation(child: SubticketNode, parent: SubticketNode): string | null {
   if (child.key === parent.key) return 'a ticket cannot be its own parent';
-  if (child.type === EPIC_TYPE) return 'an epic cannot be a sub-ticket';
-  if (parent.type === EPIC_TYPE) {
+  if (isEpic(child)) return 'an epic cannot be a sub-ticket';
+  if (isEpic(parent)) {
     return 'an epic holds tickets, not sub-tickets: set the epic as the ticket parent instead';
   }
   if (parent.subticket_of) {
