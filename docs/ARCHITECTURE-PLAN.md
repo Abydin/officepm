@@ -677,3 +677,54 @@ needs no recursion at depth one, so none is written.
   card is a `role=button` for dragging, and a control inside it fails axe's nested-interactive rule. The link
   back to the parent is in the drawer header. The drawer's Sub-tickets section is offered on every ticket on
   purpose, so the depth rule's refusal appears when someone tries it. `PUT .../subticket-of` has no UI.
+
+Feature pipeline. Teams model work two ways: one item travelling through stages, or an epic with a story per
+team. The pipeline does both. The feature is the existing epic and travels through an ordered list of phases;
+each team's work under it is an ordinary ticket tagged with a phase and a team lane. A "phase" here is a
+pipeline stage: not a sprint phase and not a ticket status.
+
+- Storage. Migration `0004-pipeline`, additive: table `project_phases` (project, name, department, position),
+  nullable `tickets.phase` and `tickets.department`, nullable `ticket_handoffs.kind`. `tickets.phase` means two
+  things by who holds it: on an epic it is where the feature is now, on a ticket under an epic it is the phase
+  tag. Phases are stored by name, so reads need no join and a rename rewrites the tickets in the same
+  transaction as the rename (one `UPDATE ... CASE`, so two names can swap).
+- Lazy defaults. A project with no rows uses Product, Design, Engineering, QA, Release
+  (`DEFAULT_PIPELINE` in `packages/shared/src/pipeline.ts`). Nothing is written for it, not even when a feature
+  on it starts a pipeline: writing rows then would silently turn the project "configured" and make every new
+  epic start a pipeline. Only an admin saving the list creates rows.
+- Who is on a pipeline. An epic (`level` or `type` is `epic`) is on its project's pipeline when `tickets.phase` is
+  set. A new epic gets the first phase only when its project has configured phases. Any other epic stays as it
+  was, with the status-based handoff, until someone presses Start pipeline (drawer). So projects that never use
+  pipelines see no new behaviour. The only visible addition for an epic without a phase is a Pipeline section in
+  its drawer (one line and a button); the Epics screen shows nothing new for it.
+- Moving. `POST /api/tickets/:key/handoff` branches on that: an epic on a pipeline takes `to_phase`,
+  `from_phase` and `move_anyway` instead of `to_status`, `from_status` and `close_anyway`. The assignee,
+  department, note, attachments, also-involve people, comment, unread nudge and the transaction are the same
+  code. `planPhaseMove` (shared, like `planHandoff`) decides where it goes. A move is a `ticket_handoffs` row
+  with `kind` `phase` (from and to hold phase names), so the unread list works unchanged and the history is a
+  query on the same table. Plain `PATCH` of an epic's `phase` is a 409 (it would skip the history and the
+  gate); `PATCH` and the webhooks otherwise behave as before.
+- The gate. Approving out of a phase while tickets under the epic tagged with that phase are not done is a
+  409 with the count unless `move_anyway: true`. Checked on the server so a stale dialog cannot skip it, and
+  the dialog shows the same count with a Move anyway checkbox. Sending a feature back is not gated: that is
+  when work is expected to be open. Sub-tickets are not counted (they sit under a ticket that is).
+- Completing. Approving out of the last phase completes the feature: the epic keeps its last phase (so the
+  stepper stays full), takes the board's first done status, and the history row has `kind` `phase_complete`.
+  The last phase's gate applies. Completing twice is a 409. Sending a completed feature back reopens it to
+  the board's first status that is not done. Completeness is read, not stored: the last move completed and
+  the epic is still in a done status, so reopening the epic through `PATCH` makes it not complete.
+- Removing a phase. Refused with a 409 naming how many tickets use it (epics in it and tickets tagged with
+  it), rather than moving them: moving tickets to a phase nobody chose would hide work. Renaming is safe by
+  design (above). Historic moves keep the names they had at the time.
+- Who. Reading, starting an epic and moving it: any signed-in user, like every ticket edit in v1. Editing a
+  project's phases: admin only, like board settings.
+- Privacy. No pipeline response carries an email: the history names people (`from_name`, `to_names`), never
+  addresses. Not changed: a handoff that names an assignee still returns the ticket with that assignee's
+  email, as every ticket does, so a phase move that names a person reveals that email in `ticket.assignee`.
+  The `handoff.created` event and the new `pipeline.changed` event carry ids and slugs only; the comment a
+  move posts is announced with its full text like every comment.
+- Tickets under a feature. `phase` and `department` are accepted on `POST /api/tickets` and `PATCH` and checked
+  against the project (phase must be in its list, ignoring case, department is validated like a user's). The
+  Epics screen shows the stepper, then the tickets by phase and lane, and a form that creates a ticket with
+  both preselected; the phase in that form follows the feature until the person picks one. Each ticket keeps
+  its own status, assignee, people and sub-tickets.

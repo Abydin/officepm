@@ -160,6 +160,22 @@ while sub-tickets are open shows how many, and needs Close anyway to be ticked: 
 a block. Deleting a parent keeps its sub-tickets as ordinary tickets, as deleting an epic does
 for its children.
 
+**Feature pipelines.** A feature is an epic that travels through your project's phases, and
+each team's work on it is its own ticket. An admin sets a project's phases on the Admin page
+(add, rename, reorder, remove, and a department for each); until then a project uses Product,
+Design, Engineering, QA, Release. A new epic on a project with phases starts at the first one
+(any other epic starts a pipeline from its drawer). The handoff dialog on a feature moves it
+between phases: Approve goes to the next phase or any later one, Reject goes back and needs a
+reason, so Design and Product can pass it back and forth, and the dialog suggests the next
+phase's department for the hand-over. Under the feature, a Backend ticket and a Frontend ticket
+are separate tickets, each with its own assignee and status, tagged with a phase and a team lane.
+The Epics screen shows each feature as a stepper (every phase, the current one marked, done of
+total per phase), the tickets grouped by phase and lane, and a form that adds a ticket with its
+phase and lane preselected. Moving a feature out of a phase while tickets tagged with it are open
+warns and needs Move anyway (the server asks for the same). Approving out of the last phase
+completes the feature. The epic's drawer lists every move: who, from and to, why. Epics that
+never start a pipeline look and work as before.
+
 **Real-time.** Server-Sent Events, so a ticket someone else moves appears
 immediately without polling.
 
@@ -206,7 +222,7 @@ handler that drifts from the contract fails a test rather than a screen.
 ### API additions since v1
 
 All additive: v1's routes and response shapes are unchanged, and a v1 server still runs
-on the migrated database (migration `0001-handoffs`: one nullable column and two tables; `0002-participants`: two more tables; `0003-subtickets`: one nullable column on `tickets`).
+on the migrated database (migration `0001-handoffs`: one nullable column and two tables; `0002-participants`: two more tables; `0003-subtickets`: one nullable column on `tickets`; `0004-pipeline`: the `project_phases` table, `phase` and `department` on `tickets` and `kind` on `ticket_handoffs`).
 
 | Route | Who | What |
 |---|---|---|
@@ -238,6 +254,23 @@ to each ticket. Every ticket the server returns has `subticket_of` (a key or nul
 status needs while it has open sub-tickets (otherwise 409 with the count). `PATCH /api/tickets/:key`
 and the GitHub webhooks are unchanged, so they can still move a parent to Done with open sub-tickets;
 the one new refusal is `PATCH` of `type` to `epic` on a ticket that is, or has, sub-tickets (409).
+
+| `GET /api/projects/:slug/pipeline` | signed in | `{ configured, phases: [{ name, department }] }`. `configured` is false while the list is the built-in default (Product, Design, Engineering, QA, Release) and nothing is stored. 404 for an unknown project |
+| `PUT /api/projects/:slug/pipeline` | admin | `{ phases: [{ name, department?, was? }] }`, 1 to 12 phases in order, replacing the list. Names are one line, 40 characters at most, different ignoring case; `department` is validated like a user's. `was` names the phase an entry used to be called, so a rename keeps its tickets. 400 for a bad list, 409 when a removed phase is still used by tickets (the message says how many) |
+| `GET /api/tickets/:key/pipeline` | signed in | For an epic: `{ in_use, current, completed, phases: [{ name, department, done, total }], history: [{ id, decision, from_phase, to_phase, completed, reason, note, from_name, to_names, to_department, created_at }] }`. `done` and `total` count the tickets under the epic tagged with each phase. Names only, never an email. 409 for a ticket that is not an epic |
+| `POST /api/tickets/:key/pipeline/start` | signed in | Starts an epic at its project's first phase. 409 if it already has a phase or is not an epic |
+
+`POST /api/tickets/:key/handoff` on an epic that is on a pipeline takes `to_phase`, `from_phase` and
+`move_anyway` where a ticket takes `to_status`, `from_status` and `close_anyway`; the decision, reason,
+assignee, department, note, attachments and `participant_ids` work as before. Approve moves to the next
+phase or any later one, and from the last phase completes the feature (the epic takes its board's first done
+status); reject moves to an earlier phase and needs a `reason`. Approving out of a phase while tickets tagged
+with it are not done is a 409 with the count unless `move_anyway: true`. The result gains
+`phase: { from, to, completed }` (`to` is null on completion). `POST /api/tickets` and `PATCH
+/api/tickets/:key` accept `phase` and `department` on a ticket (`phase` must be in the project's list;
+`PATCH` of `phase` on an epic is a 409, it moves by handoff). Every ticket the server returns has
+`phase` and `department` (a string or null). The event stream gains `pipeline.changed` (the project slug).
+No new response carries an email; a handoff that names an assignee still returns that email on the ticket.
 
 What this does not hide: the ticket's `assignee` is still an email on every ticket, as in v1,
 and a handoff that names an assignee still returns that email. The participants lists, the

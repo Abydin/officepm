@@ -151,6 +151,11 @@ Added in 3c (the remaining v1 screens, none of them placeholders now):
   list comes with the ticket (`participants`), the picker reuses `GET /api/people` and the department filter, and card
   avatars (`ParticipantStack` in `ticket-card.tsx`) show three then +N. My Tickets has a second table, Also on, from
   `GET /api/my-tickets/participating`.
+- **Feature pipelines** (`features/pipeline/`, `features/epics/feature-pipeline.tsx`): the stepper, the history
+  timeline, the epic drawer section and the ticket tags section, the Admin page's phase editor, and the Epics
+  screen's lanes and add-ticket form. The handoff dialog loads the epic's pipeline itself when the ticket is an epic
+  with a `phase`, and then moves it between phases (`phaseOptions`, with `planPhaseMove` as the server's rule);
+  otherwise it is the status dialog. The Move anyway box (`gating`) mirrors the server's 409.
 - **Sub-tickets** (`features/tickets/subtickets-section.tsx`): the drawer section (Enter adds one, a click opens it), the
   `sub of KEY` button in a sub-ticket's drawer header, `3/5` and `sub of KEY` on cards, and the Close anyway box in the
   handoff dialog (`closing` in `handoff-dialog.tsx`). The one level rule is the server's: this code only shows its message.
