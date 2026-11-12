@@ -320,10 +320,7 @@ test.describe('at 390px wide', () => {
     await signIn(page);
     await setDepartments(page);
     const feature = await newFeature(page, 'Narrow feature');
-    const overflow = () =>
-      page.evaluate(
-        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-      );
+    const overflow = () => page.locator('html').evaluate((el) => el.scrollWidth > el.clientWidth);
     try {
       await page.goto('/#/projects/food/boards/eng/epics');
       await expect(page.getByRole('region', { name: new RegExp(feature.key) })).toBeVisible();
