@@ -3,16 +3,21 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   HANDOFF_NOTE_MAX,
   HandoffRequestSchema,
+  openPhaseTicketsMessage,
   openSubticketsMessage,
   planHandoff,
+  planPhaseMove,
   type HandoffNotice,
   type HandoffResult,
 } from '@officepm/shared';
 import type { AppContext, JsonBody, SessionUser } from '../../context.js';
+import type { BoardConfig } from '../../projects-config.js';
+import type { TicketRow } from '../tickets/serialize.js';
 import { schema } from '../../db/index.js';
 import { badRequest, conflict, notFound } from '../../http/errors.js';
 import { requireShape } from '../../http/validate.js';
 import type { CommentService } from '../comments/service.js';
+import { createPipelineService, isEpicRow } from '../pipeline/service.js';
 import { createRelations } from '../tickets/relations.js';
 import { serializeTicket } from '../tickets/serialize.js';
 
@@ -29,6 +34,7 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
     schema;
   const { projects, events } = ctx;
   const relations = createRelations(ctx);
+  const pipeline = createPipelineService(ctx);
 
   const unreadStmt = raw.prepare(`
     SELECT h.id, h.ticket_key, t.title AS ticket_title, h.decision, h.from_status, h.to_status,
@@ -53,6 +59,101 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
     SELECT id, ? FROM ticket_handoffs WHERE ticket_key = ?
   `);
 
+  /** What a handoff does, whichever way the ticket moves. Everything below the plan is shared. */
+  interface Move {
+    /** null for a status change, else the ticket_handoffs.kind. */
+    kind: 'phase' | 'phase_complete' | null;
+    decision: 'approve' | 'reject';
+    /** Stored as from_status / to_status. For a pipeline move these are phase names. */
+    from: string;
+    to: string;
+    reason: string | null;
+    line: string;
+    statusAfter: string;
+    /** undefined leaves tickets.phase alone. */
+    phaseAfter?: string;
+    phase?: { from: string; to: string | null; completed: boolean };
+  }
+
+  function planStatusMove(existing: TicketRow, board: BoardConfig, b: JsonBody): Move {
+    if (typeof b.from_status === 'string' && b.from_status && b.from_status !== existing.status) {
+      throw conflict(
+        'this ticket moved to "' + existing.status + '" since you opened it, reload and try again',
+      );
+    }
+    const plan = planHandoff(board, existing.status, b);
+    if (!plan.ok) throw plan.status === 409 ? conflict(plan.message) : badRequest(plan.message);
+    return {
+      kind: null,
+      decision: plan.decision,
+      from: existing.status,
+      to: plan.to,
+      reason: plan.reason,
+      statusAfter: plan.to,
+      line:
+        plan.decision === 'approve'
+          ? `Handed off from ${existing.status} to ${plan.to}.`
+          : `Sent back from ${existing.status} to ${plan.to}.`,
+    };
+  }
+
+  /**
+   * An epic on its pipeline. Approving out of the last phase completes the feature: the epic
+   * keeps its last phase and takes the board's first done status. Sending a completed feature
+   * back reopens it to the board's first status that is not done. Moving on while tickets tagged
+   * with the phase being left are open needs move_anyway (approve only: sending back is when
+   * work is expected to be open).
+   */
+  function planPipelineMove(
+    existing: TicketRow & { phase: string },
+    board: BoardConfig,
+    b: JsonBody,
+  ): Move {
+    if (typeof b.from_phase === 'string' && b.from_phase && b.from_phase !== existing.phase) {
+      throw conflict(
+        'this feature moved to "' + existing.phase + '" since you opened it, reload and try again',
+      );
+    }
+    const names = pipeline.phasesOf(existing.project_slug).map((p) => p.name);
+    const plan = planPhaseMove(names, existing.phase, b);
+    if (!plan.ok) throw plan.status === 409 ? conflict(plan.message) : badRequest(plan.message);
+
+    const completed = plan.to === null;
+    if (completed && pipeline.isCompleted(existing))
+      throw conflict('this feature is already complete');
+    let moveAnyway = '';
+    if (plan.decision === 'approve') {
+      const open = pipeline.openInPhase(existing, existing.phase);
+      if (open) {
+        if (b.move_anyway !== true) throw conflict(openPhaseTicketsMessage(open, existing.phase));
+        moveAnyway = `\nMoved on with ${open} open ${open === 1 ? 'ticket' : 'tickets'} in ${existing.phase}.`;
+      }
+    }
+    const done = board.done_statuses.includes(existing.status);
+    let statusAfter = existing.status;
+    if (completed)
+      statusAfter = done ? existing.status : (board.done_statuses[0] ?? existing.status);
+    else if (plan.decision === 'reject' && done) {
+      statusAfter = board.statuses.find((s) => !board.done_statuses.includes(s)) ?? existing.status;
+    }
+    const line = completed
+      ? `Completed the feature from ${existing.phase}.`
+      : plan.decision === 'approve'
+        ? `Moved from ${existing.phase} to ${plan.to}.`
+        : `Sent back from ${existing.phase} to ${plan.to}.`;
+    return {
+      kind: completed ? 'phase_complete' : 'phase',
+      decision: plan.decision,
+      from: existing.phase,
+      to: completed ? statusAfter : plan.to!,
+      reason: plan.reason,
+      line: line + moveAnyway,
+      statusAfter,
+      phaseAfter: completed ? existing.phase : plan.to!,
+      phase: { from: existing.phase, to: plan.to, completed },
+    };
+  }
+
   return {
     /**
      * Moves a ticket on from one stage, and tells the next handler. Everything is
@@ -67,15 +168,11 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
       if (!found) throw conflict('this ticket belongs to a board that is not configured');
       requireShape(HandoffRequestSchema, b);
 
-      if (typeof b.from_status === 'string' && b.from_status && b.from_status !== existing.status) {
-        throw conflict(
-          'this ticket moved to "' +
-            existing.status +
-            '" since you opened it, reload and try again',
-        );
-      }
-      const plan = planHandoff(found.board, existing.status, b);
-      if (!plan.ok) throw plan.status === 409 ? conflict(plan.message) : badRequest(plan.message);
+      // An epic that is on a pipeline moves between phases; everything else moves between statuses.
+      const onPipeline = isEpicRow(existing) && existing.phase !== null;
+      const move = onPipeline
+        ? planPipelineMove(existing as typeof existing & { phase: string }, found.board, b)
+        : planStatusMove(existing, found.board, b);
 
       const note = text(b.note);
       if (note && note.length > HANDOFF_NOTE_MAX) {
@@ -97,7 +194,8 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
 
       // Closing a parent while its sub-tickets are open needs an explicit confirmation.
       if (
-        found.board.done_statuses.includes(plan.to) &&
+        move.kind === null &&
+        found.board.done_statuses.includes(move.statusAfter) &&
         !found.board.done_statuses.includes(existing.status)
       ) {
         const open = orm
@@ -150,12 +248,8 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
         throw badRequest('attachment not found on this ticket');
       }
 
-      const lines = [
-        plan.decision === 'approve'
-          ? `Handed off from ${existing.status} to ${plan.to}.`
-          : `Sent back from ${existing.status} to ${plan.to}.`,
-      ];
-      if (plan.reason) lines.push(`Reason: ${plan.reason}`);
+      const lines = [move.line];
+      if (move.reason) lines.push(`Reason: ${move.reason}`);
       if (assignee) lines.push(`To: ${assignee.name}`);
       if (department) lines.push(`Department: ${department}`);
       let body = lines.join('\n');
@@ -168,7 +262,8 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
         orm
           .update(tickets)
           .set({
-            status: plan.to,
+            status: move.statusAfter,
+            ...(move.phaseAfter !== undefined ? { phase: move.phaseAfter } : {}),
             ...(assignee ? { assignee: assignee.email } : {}),
             updated_at: sql`datetime('now')`,
           })
@@ -198,10 +293,11 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
           .values({
             id: handoffId,
             ticket_key: key,
-            decision: plan.decision,
-            from_status: existing.status,
-            to_status: plan.to,
-            reason: plan.reason,
+            decision: move.decision,
+            from_status: move.from,
+            to_status: move.to,
+            kind: move.kind,
+            reason: move.reason,
             note,
             from_email: user.email,
             from_name: user.name,
@@ -227,7 +323,7 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
       events.broadcast('handoff.created', {
         id: handoffId,
         ticket_key: key,
-        decision: plan.decision,
+        decision: move.decision,
         from_user_id: user.id,
         to_user_id: assignee?.id ?? null,
         to_user_ids: [...new Set([...(assignee ? [assignee.id] : []), ...participantIds])],
@@ -238,12 +334,13 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
         comment,
         handoff: {
           id: handoffId,
-          decision: plan.decision,
-          from_status: existing.status,
-          to_status: plan.to,
+          decision: move.decision,
+          from_status: move.from,
+          to_status: move.to,
           to_user_id: assignee?.id ?? null,
           to_department: department,
         },
+        ...(move.phase ? { phase: move.phase } : {}),
       };
     },
 

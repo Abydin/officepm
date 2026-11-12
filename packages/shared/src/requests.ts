@@ -98,6 +98,11 @@ export const HandoffRequestSchema = z.object({
   participant_ids: z.array(z.number().int()).max(MAX_HANDOFF_PARTICIPANTS).nullish(),
   // Confirms closing a parent whose sub-tickets are still open.
   close_anyway: z.boolean().nullish(),
+  // Epics on a pipeline move between phases: these replace to_status and from_status.
+  to_phase: z.string().nullish(),
+  from_phase: z.string().nullish(),
+  // Confirms moving on while tickets tagged with the phase left are still open.
+  move_anyway: z.boolean().nullish(),
 });
 
 export const SettingsPatchRequestSchema = z.object({

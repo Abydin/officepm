@@ -62,6 +62,9 @@ export const tickets = sqliteTable(
     due_date: text('due_date'),
     // Added by migration 0003. The ticket a sub-ticket belongs to; parent_key stays the epic.
     subticket_of: text('subticket_of'),
+    // Added by migration 0004. Epic: current pipeline phase. Ticket under an epic: its phase tag.
+    phase: text('phase'),
+    department: text('department'),
   },
   (t) => [
     index('idx_tickets_board').on(t.project_slug, t.board_slug),
@@ -216,6 +219,8 @@ export const ticketHandoffs = sqliteTable(
     attachment_ids: text('attachment_ids'),
     comment_id: integer('comment_id'),
     created_at: text('created_at').default(now),
+    // Added by migration 0004: null for a status handoff, 'phase' or 'phase_complete' for a pipeline move.
+    kind: text('kind'),
   },
   (t) => [
     index('idx_ticket_handoffs_ticket').on(t.ticket_key),
@@ -258,6 +263,19 @@ export const handoffRecipients = sqliteTable(
     primaryKey({ columns: [t.handoff_id, t.user_id] }),
     index('idx_handoff_recipients_user').on(t.user_id),
   ],
+);
+
+export const projectPhases = sqliteTable(
+  'project_phases',
+  {
+    id: text('id').primaryKey(),
+    project_slug: text('project_slug').notNull(),
+    name: text('name').notNull(),
+    department: text('department'),
+    position: integer('position').notNull(),
+    created_at: text('created_at').default(now),
+  },
+  (t) => [index('idx_project_phases_project').on(t.project_slug, t.position)],
 );
 
 /** Additive bookkeeping table owned by migrate.ts. v1 never reads or writes it. */

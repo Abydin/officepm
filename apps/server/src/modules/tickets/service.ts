@@ -16,6 +16,7 @@ import { transitionViolation } from './transitions.js';
 import { labelsColumn, validateTicketExtras } from './validation.js';
 import { serializeTicket } from './serialize.js';
 import { createRelations } from './relations.js';
+import { createPipelineService, isEpicRow } from '../pipeline/service.js';
 
 const TICKET_PATCHABLE = new Set([
   'title',
@@ -35,6 +36,8 @@ const TICKET_PATCHABLE = new Set([
   'priority',
   'labels',
   'due_date',
+  'phase',
+  'department',
 ]);
 
 export interface TicketListQuery {
@@ -64,6 +67,7 @@ export function createTicketService(ctx: AppContext) {
   const { projects, events } = ctx;
 
   const relations = createRelations(ctx);
+  const pipeline = createPipelineService(ctx);
   const byKey = (key: string) => orm.select().from(tickets).where(eq(tickets.key, key)).get();
 
   function requireTicket(key: string) {
@@ -118,6 +122,19 @@ export function createTicketService(ctx: AppContext) {
       const extrasErr = validateTicketExtras(b);
       if (extrasErr) throw badRequest(extrasErr);
       requireShape(TicketCreateRequestSchema, b);
+      const epic = isEpicRow({
+        level: board.agile ? (b.level as string) || 'task' : null,
+        type: b.type as string,
+      });
+      // An epic cannot be tagged (it moves by handoff). A new epic on a project that configured a
+      // pipeline starts at its first phase; on any other project it starts without one.
+      const tags = epic ? {} : pipeline.normaliseTags(found.project.slug, b, false);
+      const startPhase = epic
+        ? (() => {
+            const cfg = pipeline.config(found.project.slug);
+            return cfg.configured ? cfg.phases[0]!.name : null;
+          })()
+        : (tags.phase ?? null);
 
       const key = raw.transaction(() => {
         const next = allocateTicketKey(raw, board.prefix);
@@ -145,6 +162,8 @@ export function createTicketService(ctx: AppContext) {
             labels: labelsColumn(b.labels),
             due_date: (b.due_date as string) || null,
             subticket_of: subticketOf,
+            phase: startPhase,
+            department: tags.department ?? null,
           })
           .run();
         return next;
@@ -163,8 +182,14 @@ export function createTicketService(ctx: AppContext) {
       if (extrasErr) throw badRequest(extrasErr);
 
       const set: Record<string, unknown> = {};
+      // The tags are checked against the ticket's project, and an epic's phase is refused.
+      const tags = pipeline.normaliseTags(existing.project_slug, body, isEpicRow(existing));
       for (const field of Object.keys(body)) {
         if (!TICKET_PATCHABLE.has(field)) continue;
+        if (field === 'phase' || field === 'department') {
+          set[field] = tags[field];
+          continue;
+        }
         if (field === 'status' && found && !found.board.statuses.includes(body.status as string)) {
           throw badRequest('status must be one of: ' + found.board.statuses.join(', '));
         }

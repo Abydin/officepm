@@ -122,6 +122,10 @@ export const TicketSchema = z.object({
   // every ticket the server returns; participants and progress are filled by GET /api/tickets and
   // GET /api/tickets/:key only, and subtickets by the detail route only.
   subticket_of: z.string().nullish(),
+  // Pipeline fields (migration 0004). On an epic, phase is where the feature is now; on a ticket
+  // under an epic it is the phase the ticket belongs to. department tags a ticket's team lane.
+  phase: z.string().nullish(),
+  department: z.string().nullish(),
   participants: z.array(z.lazy(() => ParticipantSchema)).optional(),
   progress: z.lazy(() => SubticketProgressSchema).optional(),
   subtickets: z.array(z.lazy(() => SubticketSummarySchema)).optional(),
@@ -155,6 +159,9 @@ export const TicketCreateSchema = z.object({
   priority: PrioritySchema.nullish(),
   labels: LabelsInput.nullish(),
   due_date: DueDateInput.nullish(),
+  // Pipeline tags for a ticket under an epic. The server checks them against the project.
+  phase: z.string().nullish(),
+  department: z.string().nullish(),
 });
 export type TicketCreate = z.infer<typeof TicketCreateSchema>;
 
@@ -556,6 +563,15 @@ export const HandoffResultSchema = z.object({
     to_user_id: z.number().int().nullable(),
     to_department: z.string().nullable(),
   }),
+  // Present when the handoff moved an epic along its pipeline instead of changing its status.
+  phase: z
+    .object({
+      from: z.string(),
+      /** Null when the move completed the feature. */
+      to: z.string().nullable(),
+      completed: z.boolean(),
+    })
+    .optional(),
 });
 export type HandoffResult = z.infer<typeof HandoffResultSchema>;
 

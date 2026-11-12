@@ -14,7 +14,13 @@ const cols = (table: string) =>
 
 describe('runMigrations', () => {
   it('applies every migration, baseline first, to an empty database and records them', () => {
-    const all = ['0000-baseline', '0001-handoffs', '0002-participants', '0003-subtickets'];
+    const all = [
+      '0000-baseline',
+      '0001-handoffs',
+      '0002-participants',
+      '0003-subtickets',
+      '0004-pipeline',
+    ];
     expect(runMigrations(db)).toEqual(all);
     expect(MIGRATIONS.map((m) => m.name)).toEqual(all);
     expect(cols('tickets')).toEqual(expect.arrayContaining(['priority', 'labels', 'due_date']));
@@ -24,6 +30,7 @@ describe('runMigrations', () => {
       { name: '0001-handoffs' },
       { name: '0002-participants' },
       { name: '0003-subtickets' },
+      { name: '0004-pipeline' },
     ]);
   });
 
@@ -110,7 +117,7 @@ describe('runMigrations', () => {
         "INSERT INTO ticket_participants (ticket_key, user_id, role, added_by) VALUES ('K-1', 2, 'PM', 1)",
       ).run();
       expect(cols('tickets')).not.toContain('subticket_of');
-      expect(runMigrations(db)).toEqual(['0003-subtickets']);
+      expect(runMigrations(db)).toEqual(['0003-subtickets', '0004-pipeline']);
       expect(db.prepare('SELECT key, title, subticket_of FROM tickets').all()).toEqual([
         { key: 'K-1', title: 't', subticket_of: null },
       ]);
@@ -203,5 +210,54 @@ describe('runMigrations', () => {
     const m = (name: string): Migration => ({ name, up() {} });
     expect(() => runMigrations(db, [m('0001-a'), m('0001-a')])).toThrow(/duplicate/);
     expect(() => runMigrations(db, [m('0002-b'), m('0001-a')])).toThrow(/order/);
+  });
+
+  describe('0004-pipeline', () => {
+    const insert = (db: Database.Database) =>
+      db
+        .prepare(
+          "INSERT INTO tickets (project_slug, board_slug, key, title, type, status) VALUES ('p','b','K-1','t','task','Backlog')",
+        )
+        .run();
+
+    it('adds the phase tables and columns to a v1 database and leaves its rows as they were', () => {
+      db.exec(BASELINE_SQL);
+      insert(db);
+      const v1Cols =
+        'id, project_slug, board_slug, key, title, type, status, parent_key, created_at';
+      const before = db.prepare(`SELECT ${v1Cols} FROM tickets`).all();
+      runMigrations(db);
+      expect(cols('tickets')).toEqual(expect.arrayContaining(['phase', 'department']));
+      expect(cols('ticket_handoffs')).toContain('kind');
+      expect(cols('project_phases')).toEqual(
+        expect.arrayContaining(['project_slug', 'name', 'department', 'position']),
+      );
+      expect(db.prepare(`SELECT ${v1Cols} FROM tickets`).all()).toEqual(before);
+      expect(db.prepare('SELECT phase, department FROM tickets').all()).toEqual([
+        { phase: null, department: null },
+      ]);
+    });
+
+    it('upgrades a v2 database already at 0003, keeping its tickets and handoffs', () => {
+      runMigrations(db, MIGRATIONS.slice(0, 4));
+      insert(db);
+      db.prepare(
+        "INSERT INTO ticket_handoffs (id, ticket_key, decision, from_status, to_status, from_email, from_name) VALUES ('h1','K-1','approve','Backlog','Done','a@b.c','A')",
+      ).run();
+      expect(cols('tickets')).not.toContain('phase');
+      expect(runMigrations(db)).toEqual(['0004-pipeline']);
+      expect(db.prepare('SELECT key, title, phase FROM tickets').all()).toEqual([
+        { key: 'K-1', title: 't', phase: null },
+      ]);
+      expect(db.prepare('SELECT id, kind FROM ticket_handoffs').all()).toEqual([
+        { id: 'h1', kind: null },
+      ]);
+    });
+
+    it('is safe when the columns already exist', () => {
+      runMigrations(db, MIGRATIONS.slice(0, 4));
+      db.exec('ALTER TABLE tickets ADD COLUMN phase TEXT');
+      expect(() => runMigrations(db)).not.toThrow();
+    });
   });
 });

@@ -11,6 +11,7 @@ import { createCommentService } from './modules/comments/service.js';
 import { eventRoutes } from './modules/events/routes.js';
 import { githubRoutes } from './modules/github/routes.js';
 import { handoffRoutes } from './modules/handoffs/routes.js';
+import { pipelineRoutes } from './modules/pipeline/routes.js';
 import { projectRoutes } from './modules/projects/routes.js';
 import { reportRoutes } from './modules/reports/routes.js';
 import { retroRoutes } from './modules/retros/routes.js';
@@ -59,6 +60,7 @@ export function createApp(ctx: AppContext): Hono<AppEnv> {
   api.route('/', authRoutes(ctx));
   api.route('/', projectRoutes(ctx));
   api.route('/', ticketRoutes(ctx, tickets));
+  api.route('/', pipelineRoutes(ctx));
   api.route('/', participantRoutes(ctx));
   api.route('/', subticketRoutes(ctx, tickets));
   api.route('/', commentRoutes(ctx, comments));

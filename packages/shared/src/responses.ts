@@ -82,6 +82,7 @@ export const SERVER_EVENTS = [
   'sprint.updated',
   'sprint.deleted',
   'retro.card.created',
+  'pipeline.changed',
 ] as const;
 export const ServerEventNameSchema = z.enum(SERVER_EVENTS);
 export type ServerEventName = z.infer<typeof ServerEventNameSchema>;
