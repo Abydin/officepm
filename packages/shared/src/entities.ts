@@ -138,7 +138,7 @@ const DueDateInput = z
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine((d) => !Number.isNaN(new Date(d + 'T00:00:00Z').getTime()), 'not a real date');
 
-/** The longest ticket title a create or patch accepts, in UTF-16 code units. */
+/** The longest ticket title a create or patch accepts, in Unicode code points (zod counts an emoji as one). */
 export const MAX_TITLE_LENGTH = 200;
 
 /** POST /api/tickets body. Which fields are honoured depends on the board. */
