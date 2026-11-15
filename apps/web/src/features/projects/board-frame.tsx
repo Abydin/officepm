@@ -1,3 +1,4 @@
+import { MAX_TITLE_LENGTH } from '@officepm/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
@@ -88,6 +89,7 @@ export function BoardFrame() {
           aria-label="New ticket title"
           placeholder="New ticket title, press Enter"
           value={title}
+          maxLength={MAX_TITLE_LENGTH}
           onChange={(e) => setTitle(e.target.value)}
           className="min-w-0 flex-1"
         />

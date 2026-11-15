@@ -9,6 +9,7 @@ import {
   DashboardSchema,
   ErrorBodySchema,
   GithubHookResultSchema,
+  MAX_TITLE_LENGTH,
   OverviewRowSchema,
   ProjectSchema,
   RetroWithCardsSchema,
@@ -174,6 +175,21 @@ describe('API contract (shared Zod schemas)', () => {
     expect(TicketSchema.parse((await call('GET', '/api/tickets/FOOD-ENG-1')).json).status).toBe(
       'Code Review',
     );
+  });
+
+  it('refuses a ticket title over the cap with a 400, on create and on patch', async () => {
+    const base = { project_slug: 'food', board_slug: 'eng', type: 'task' };
+    const tooLong = 'x'.repeat(MAX_TITLE_LENGTH + 1);
+    const created = await call('POST', '/api/tickets', { ...base, title: tooLong });
+    expect(created.status).toBe(400);
+    expect(ErrorBodySchema.parse(created.json).error).toContain('title');
+    const fits = await call('POST', '/api/tickets', {
+      ...base,
+      title: 'x'.repeat(MAX_TITLE_LENGTH),
+    });
+    expect(fits.status).toBe(201);
+    const key = TicketSchema.parse(fits.json).key;
+    expect((await call('PATCH', '/api/tickets/' + key, { title: tooLong })).status).toBe(400);
   });
 
   it('answers errors as { error } with v1 status codes', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DepartmentSchema,
   ErrorBodySchema,
+  MAX_TITLE_LENGTH,
   TicketCreateSchema,
   TicketPatchSchema,
   TicketSchema,
@@ -61,6 +62,19 @@ describe('entities', () => {
     expect(TicketCreateSchema.safeParse({ ...base, labels: ['x'.repeat(25)] }).success).toBe(false);
     expect(TicketPatchSchema.safeParse({}).success).toBe(true);
     expect(TicketPatchSchema.safeParse({ status: 'Done', blocked: true }).success).toBe(true);
+  });
+
+  it('caps a ticket title at MAX_TITLE_LENGTH on create and patch', () => {
+    const base = { project_slug: 'food', board_slug: 'eng', type: 'task' };
+    expect(MAX_TITLE_LENGTH).toBe(200);
+    const fits = 'x'.repeat(MAX_TITLE_LENGTH);
+    const tooLong = fits + 'x';
+    expect(TicketCreateSchema.safeParse({ ...base, title: fits }).success).toBe(true);
+    expect(TicketCreateSchema.safeParse({ ...base, title: tooLong }).success).toBe(false);
+    expect(TicketPatchSchema.safeParse({ title: fits }).success).toBe(true);
+    expect(TicketPatchSchema.safeParse({ title: tooLong }).success).toBe(false);
+    // Reading is not capped: a ticket stored before the cap must still parse.
+    expect(TicketSchema.safeParse({ ...ticket, title: tooLong }).success).toBe(true);
   });
 
   it('has the { error } shape', () => {

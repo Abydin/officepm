@@ -1,3 +1,4 @@
+import { MAX_TITLE_LENGTH } from '@officepm/shared';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -126,6 +127,15 @@ describe('command palette', () => {
 
     await user.keyboard('/');
     await palette();
+  });
+
+  it('stops the new-ticket title box at the server cap', async () => {
+    setup();
+    renderApp('/projects/food/boards/design');
+    expect(await screen.findByLabelText('New ticket title')).toHaveAttribute(
+      'maxlength',
+      String(MAX_TITLE_LENGTH),
+    );
   });
 
   it('C focuses the title box on a board', async () => {

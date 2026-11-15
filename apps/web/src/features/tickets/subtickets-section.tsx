@@ -1,4 +1,4 @@
-import type { Ticket } from '@officepm/shared';
+import { MAX_TITLE_LENGTH, type Ticket } from '@officepm/shared';
 import { useId, useState, type FormEvent } from 'react';
 import { Avatar } from '@/components/avatar';
 import { StatusPill } from '@/components/status-pill';
@@ -73,6 +73,7 @@ export function SubticketsSection({ ticket }: { ticket: Ticket }) {
           id={inputId}
           placeholder="Add a sub-ticket, press Enter"
           value={title}
+          maxLength={MAX_TITLE_LENGTH}
           onChange={(e) => setTitle(e.target.value)}
         />
       </form>

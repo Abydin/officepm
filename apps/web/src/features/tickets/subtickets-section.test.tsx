@@ -1,3 +1,4 @@
+import { MAX_TITLE_LENGTH } from '@officepm/shared';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -62,6 +63,14 @@ describe('SubticketsSection', () => {
     expect(within(first).getByRole('img', { name: 'Sam Adeyemi' })).toBeVisible();
     const second = within(list).getByRole('button', { name: /FOOD-DES-3/ });
     expect(within(second).getByRole('img', { name: 'Unassigned' })).toBeVisible();
+  });
+
+  it('stops the sub-ticket title box at the server cap', () => {
+    setup();
+    expect(screen.getByLabelText('New sub-ticket title')).toHaveAttribute(
+      'maxlength',
+      String(MAX_TITLE_LENGTH),
+    );
   });
 
   it('opens a sub-ticket in the drawer when it is clicked', async () => {

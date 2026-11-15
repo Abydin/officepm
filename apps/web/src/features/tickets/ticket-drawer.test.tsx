@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Ticket } from '@officepm/shared';
+import { MAX_TITLE_LENGTH, type Ticket } from '@officepm/shared';
 import { describe, expect, it } from 'vitest';
 import { jsonResponse, renderApp, stubApi } from '@/test/helpers';
 import { handoffResult, makeTicket, signedIn, ticketRoutes } from '@/test/fixtures';
@@ -63,6 +63,15 @@ describe('ticket drawer', () => {
     expect(within(drawer).getByLabelText('Description')).toHaveValue('Make it pop');
     // The board is still there behind it.
     expect(screen.getByText('Backlog', { selector: 'h2 span' })).toBeInTheDocument();
+  });
+
+  it('stops the title field at the server cap', async () => {
+    setup({ title: 'Logo refresh' });
+    const drawer = await open();
+    expect(within(drawer).getByLabelText('Title')).toHaveAttribute(
+      'maxlength',
+      String(MAX_TITLE_LENGTH),
+    );
   });
 
   it('saves a new title when you leave the field, and refuses an empty one', async () => {

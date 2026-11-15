@@ -1,5 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import {
+  MAX_TITLE_LENGTH,
   PRIORITIES,
   flowSupports,
   type Board,
@@ -220,6 +221,7 @@ function DrawerBody({
                 key={k('title', ticket.title)}
                 id={id}
                 value={ticket.title}
+                maxLength={MAX_TITLE_LENGTH}
                 className="text-[15px] font-semibold"
                 ref={(el) => {
                   if (el && focusTitle && !titleFocused.current) {
