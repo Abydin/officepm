@@ -401,15 +401,15 @@ function DrawerBody({
                 )}
               </Field>
             )}
-            <Field label="Parent ticket">
+            <Field label="Epic">
               {(id) => (
                 <Combobox
                   id={id}
                   options={parents}
                   value={ticket.parent_key}
-                  triggerLabel={`Parent ticket: ${ticket.parent_key ?? 'None'}`}
+                  triggerLabel={`Epic: ${ticket.parent_key ?? 'None'}`}
                   searchLabel="Find a ticket"
-                  clearOption={{ label: 'No parent', onSelect: () => save({ parent_key: null }) }}
+                  clearOption={{ label: 'No epic', onSelect: () => save({ parent_key: null }) }}
                   onSelect={(parent_key) => save({ parent_key })}
                 >
                   <span className="min-w-0 flex-1 truncate font-mono text-[13px]">

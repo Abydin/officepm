@@ -116,7 +116,9 @@ describe('defaultTicketType', () => {
       projects: Array<{ slug: string; boards: Array<{ slug: string; types: string[] }> }>;
     };
     const got = Object.fromEntries(
-      projects.flatMap((p) => p.boards.map((b) => [`${p.slug}/${b.slug}`, defaultTicketType(b.types)])),
+      projects.flatMap((p) =>
+        p.boards.map((b) => [`${p.slug}/${b.slug}`, defaultTicketType(b.types)]),
+      ),
     );
     expect(got).toEqual({
       'food/eng': 'task',

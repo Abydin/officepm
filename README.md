@@ -155,9 +155,10 @@ a ticket today: v1 has no per-ticket permissions and this adds none.
 
 **Sub-tickets.** The hierarchy is epic, ticket, sub-ticket, and a sub-ticket is one level
 deep: a sub-ticket cannot have its own sub-tickets, an epic cannot be a sub-ticket or hold
-them (an epic holds tickets, through the existing Parent ticket field), a ticket cannot be its
+them (an epic holds tickets, through the drawer's Epic field), a ticket cannot be its
 own parent, and parent and child are in one project. In the ticket drawer, a Sub-tickets
-section adds one when you type a title and press Enter, lists each with its key, status and
+section adds one when you type a title and press Enter (an epic or a sub-ticket shows a short
+explanation instead of the box), lists each with its key, status and
 assignee, and opens it on a click; a sub-ticket's drawer has a "sub of KEY" button back to its
 parent. A sub-ticket is an ordinary ticket in every other way: its own key from the board's
 numbering, the board's statuses and workflow rules, its own assignee, people and handoffs. On

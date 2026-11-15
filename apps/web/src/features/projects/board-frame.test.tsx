@@ -41,9 +41,11 @@ describe('board quick-add', () => {
     renderApp('/projects/food/boards/eng');
     const box = await titleBox();
     const select = screen.getByRole('combobox', { name: 'Ticket type' });
-    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(
-      engBoard.types,
-    );
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(engBoard.types);
     await user.selectOptions(select, 'epic');
     await user.type(box, 'Checkout{Enter}');
     await waitFor(() => expect(posts()).toHaveLength(1));

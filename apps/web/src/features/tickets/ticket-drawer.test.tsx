@@ -65,6 +65,13 @@ describe('ticket drawer', () => {
     expect(screen.getByText('Backlog', { selector: 'h2 span' })).toBeInTheDocument();
   });
 
+  it('calls the epic link Epic, so it is not mistaken for sub-ticket ownership', async () => {
+    setup({ parent_key: 'FOOD-ENG-1' });
+    const drawer = await open();
+    expect(within(drawer).getByRole('button', { name: 'Epic: FOOD-ENG-1' })).toBeVisible();
+    expect(within(drawer).queryByText('Parent ticket')).toBeNull();
+  });
+
   it('stops the title field at the server cap', async () => {
     setup({ title: 'Logo refresh' });
     const drawer = await open();

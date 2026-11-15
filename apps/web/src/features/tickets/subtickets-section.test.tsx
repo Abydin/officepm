@@ -101,22 +101,39 @@ describe('SubticketsSection', () => {
     expect(posts()).toHaveLength(0);
   });
 
-  it('shows the depth rule message from the server and keeps the typed title', async () => {
-    const { user } = setup(
-      { subticket_of: 'FOOD-DES-9', subtickets: [], progress: { done: 0, total: 0 } },
-      () =>
-        jsonResponse(
-          {
-            error:
-              'sub-tickets go one level deep: FOOD-DES-1 is already a sub-ticket of FOOD-DES-9',
-          },
-          409,
-        ),
+  it('shows the server message and keeps the typed title when the server refuses', async () => {
+    const { user } = setup({}, () =>
+      jsonResponse({ error: 'a sub-ticket must be in the same project as its parent' }, 409),
     );
     const input = screen.getByRole('textbox', { name: 'New sub-ticket title' });
     await user.type(input, 'Grandchild{Enter}');
-    expect(await screen.findByRole('alert')).toHaveTextContent('one level deep');
+    expect(await screen.findByRole('alert')).toHaveTextContent('same project');
     expect(input).toHaveValue('Grandchild');
+  });
+
+  it('offers no box on a sub-ticket, and links to its parent instead', async () => {
+    const { user } = setup({
+      subticket_of: 'FOOD-DES-9',
+      subtickets: [],
+      progress: { done: 0, total: 0 },
+    });
+    expect(screen.queryByRole('textbox', { name: 'New sub-ticket title' })).toBeNull();
+    expect(screen.getByText(/This is a sub-ticket of/)).toHaveTextContent(
+      "Sub-tickets can't have their own.",
+    );
+    await user.click(screen.getByRole('button', { name: 'FOOD-DES-9' }));
+    expect(screen.getByLabelText('location')).toHaveTextContent('?t=FOOD-DES-9');
+  });
+
+  it.each([
+    ['by type', { type: 'epic' }],
+    ['by level', { type: 'story', level: 'epic' }],
+  ])('offers no box on an epic (%s) and says where tickets go', (_how, over) => {
+    setup({ ...over, subtickets: [], progress: { done: 0, total: 0 } });
+    expect(screen.queryByRole('textbox', { name: 'New sub-ticket title' })).toBeNull();
+    expect(screen.getByText(/Epics hold tickets/)).toHaveTextContent(
+      'Create a ticket and set this epic as its Epic.',
+    );
   });
 
   it('has no list and no done count when there are none', () => {
