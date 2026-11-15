@@ -9,11 +9,12 @@ is below. Read the whole page before you start, and take the backup in step 1.
 - **Carries over unchanged:** every user, password hash (v2 still uses bcrypt, so
   nobody resets a password), project, ticket, comment, sprint, retro, link, doc,
   uploaded file, and the ticket key counters.
-- **Additions, none of which v1 reads:** on first start v2 creates `_officepm_migrations`
+- **Additions, which frozen v1 ignores (it echoes the new ticket columns in its ticket JSON through `SELECT *`, but does not use them):** on first start v2 creates `_officepm_migrations`
   and records five migrations in it (`0000-baseline` to `0004-pipeline`). They add five
   tables (`ticket_handoffs`, `handoff_reads`, `ticket_participants`, `handoff_recipients`,
   `project_phases`) and four nullable columns on v1's tables: `users.department`, and
-  `tickets.subticket_of`, `tickets.phase` and `tickets.department`. They rewrite no rows.
+  `tickets.subticket_of`, `tickets.phase` and `tickets.department`, plus
+  `ticket_handoffs.kind` on a table v2 itself creates. They rewrite no rows.
   Later v2 migrations are required to stay additive, so v1 can keep running on the same file.
 - **Upload paths:** v1 stored each upload's absolute path in the database. v2
   re-roots the `uploads/(projects|tickets)/<id>/<file>` tail under the current
