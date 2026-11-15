@@ -412,8 +412,11 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Upgrading from v1
 
-v2 reads v1's `pm.db`, `uploads/` and `projects.json` as they are, and its migration
-only adds one table, so v1 can still run on the database afterwards. Back up first.
+v2 reads v1's `pm.db`, `uploads/` and `projects.json` as they are. Its migrations only
+add: five tables and four nullable columns (`users.department`, and `tickets.subticket_of`,
+`tickets.phase`, `tickets.department`), none of which v1 reads, and no existing row
+changes. The data-compat suite checks that v1 still boots and runs on a migrated
+database. Back up first.
 The whole procedure, including Docker and the rollback, is in
 [docs/MIGRATING-FROM-V1.md](docs/MIGRATING-FROM-V1.md).
 

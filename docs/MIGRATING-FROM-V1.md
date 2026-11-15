@@ -9,10 +9,12 @@ is below. Read the whole page before you start, and take the backup in step 1.
 - **Carries over unchanged:** every user, password hash (v2 still uses bcrypt, so
   nobody resets a password), project, ticket, comment, sprint, retro, link, doc,
   uploaded file, and the ticket key counters.
-- **One addition:** on first start v2 creates a table named `_officepm_migrations`
-  and records the migration it applied. It adds no columns to v1's tables and
-  rewrites no rows. Later v2 migrations are required to stay additive, so v1 can
-  keep running on the same file.
+- **Additions, none of which v1 reads:** on first start v2 creates `_officepm_migrations`
+  and records five migrations in it (`0000-baseline` to `0004-pipeline`). They add five
+  tables (`ticket_handoffs`, `handoff_reads`, `ticket_participants`, `handoff_recipients`,
+  `project_phases`) and four nullable columns on v1's tables: `users.department`, and
+  `tickets.subticket_of`, `tickets.phase` and `tickets.department`. They rewrite no rows.
+  Later v2 migrations are required to stay additive, so v1 can keep running on the same file.
 - **Upload paths:** v1 stored each upload's absolute path in the database. v2
   re-roots the `uploads/(projects|tickets)/<id>/<file>` tail under the current
   `PM_DATA_DIR`, so moving the data directory, or mounting it at `/data` in Docker,
@@ -50,7 +52,6 @@ Copy the data to a directory of its own, so the v1 directory stays exactly as it
 mkdir -p /var/lib/officepm
 cp -a /home/office/officepm/pm.db /home/office/officepm/uploads /var/lib/officepm/
 git clone https://github.com/Abydin/officepm.git && cd officepm
-git checkout rewrite/v2                 # until v2 is merged to the default branch
 pnpm install --frozen-lockfile && pnpm build
 PM_DATA_DIR=/var/lib/officepm PM_PROJECTS_FILE=/home/office/officepm/projects.json \
   PM_TOKEN=<the value from v1's .env> pnpm start
