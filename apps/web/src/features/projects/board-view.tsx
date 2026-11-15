@@ -42,6 +42,21 @@ import {
   dragInstructions,
 } from './board-dnd';
 import { CardFace, TicketCard } from './ticket-card';
+import { useScrollEdges } from './use-scroll-edges';
+
+/** A fade over the edge of the column strip that has more columns behind it. Decorative: the strip scrolls by touch, wheel, drag and keyboard as before. */
+function ScrollCue({ edge }: { edge: 'left' | 'right' }) {
+  return (
+    <div
+      aria-hidden="true"
+      data-scroll-cue={edge}
+      className={cn(
+        'pointer-events-none absolute inset-y-0 w-12 from-transparent to-bg max-sm:hidden',
+        edge === 'right' ? 'right-0 bg-linear-to-r' : 'left-0 bg-linear-to-l',
+      )}
+    />
+  );
+}
 
 function Column({
   status,
@@ -70,7 +85,7 @@ function Column({
       ref={setNodeRef}
       aria-label={status}
       className={cn(
-        'flex w-[82vw] max-w-[320px] shrink-0 snap-start flex-col rounded-xl bg-lane p-2 sm:w-auto sm:max-w-none sm:min-w-[230px] sm:flex-1 sm:basis-0',
+        'flex w-[82vw] max-w-[320px] shrink-0 snap-start flex-col rounded-xl bg-lane p-2 sm:w-auto sm:max-w-none sm:min-w-[200px] sm:flex-1 sm:basis-0',
         isOver && 'outline-2 -outline-offset-2 outline-accent',
       )}
     >
@@ -138,6 +153,7 @@ export function BoardView() {
   const [pending, setPending] = useState<HandoffRequest | null>(null);
   const people = usePeople(tickets);
   const [dragging, setDragging] = useState<Ticket | null>(null);
+  const { ref: stripRef, edges: stripEdges } = useScrollEdges();
 
   const sensors = useSensors(
     // A few pixels of travel before a drag starts, so a click still opens the card.
@@ -300,20 +316,27 @@ export function BoardView() {
         onDragEnd={onDragEnd}
         onDragCancel={() => setDragging(null)}
       >
-        <div className="flex min-h-[55vh] snap-x snap-proximity items-stretch gap-3 overflow-x-auto pb-2">
-          {board.statuses.map((status) => (
-            <Column
-              key={status}
-              status={status}
-              board={board}
-              tickets={byStatus(status, visible)}
-              total={byStatus(status, tickets).length}
-              filtered={active}
-              selectedKey={selectedKey}
-              onOpen={open}
-              onMoveBy={moveBy}
-            />
-          ))}
+        <div className="relative">
+          <div
+            ref={stripRef}
+            className="flex min-h-[55vh] snap-x snap-proximity items-stretch gap-3 overflow-x-auto pb-2"
+          >
+            {board.statuses.map((status) => (
+              <Column
+                key={status}
+                status={status}
+                board={board}
+                tickets={byStatus(status, visible)}
+                total={byStatus(status, tickets).length}
+                filtered={active}
+                selectedKey={selectedKey}
+                onOpen={open}
+                onMoveBy={moveBy}
+              />
+            ))}
+          </div>
+          {stripEdges.left && <ScrollCue edge="left" />}
+          {stripEdges.right && <ScrollCue edge="right" />}
         </div>
         <DragOverlay>
           {dragging ? (
