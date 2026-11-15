@@ -71,13 +71,13 @@ function TicketTable({
             <th scope="col" className="px-3 py-2 font-medium">
               Title
             </th>
-            <th scope="col" className="px-3 py-2 font-medium">
+            <th scope="col" className="px-3 py-2 font-medium max-md:hidden">
               Board
             </th>
             <th scope="col" className="px-3 py-2 font-medium">
               Status
             </th>
-            <th scope="col" className="px-3 py-2 font-medium">
+            <th scope="col" className="px-3 py-2 font-medium max-md:hidden">
               Due
             </th>
           </tr>
@@ -95,14 +95,21 @@ function TicketTable({
                   <PriorityMark priority={t.priority} />
                   {t.title}
                 </button>
+                {/* On a phone the Board and Due columns fold in here, to keep the table on screen. */}
+                <span className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-dim md:hidden">
+                  <span>
+                    {t.project_slug}/{t.board_slug}
+                  </span>
+                  <DueChip date={t.due_date} />
+                </span>
               </td>
-              <td className="px-3 py-2 whitespace-nowrap text-dim">
+              <td className="px-3 py-2 whitespace-nowrap text-dim max-md:hidden">
                 {t.project_slug}/{t.board_slug}
               </td>
               <td className="px-3 py-2">
                 <StatusPill status={t.status} />
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-2 max-md:hidden">
                 <DueChip date={t.due_date} />
               </td>
             </tr>

@@ -60,7 +60,7 @@ function Shell() {
         <main
           id="main"
           tabIndex={-1}
-          className="min-w-0 flex-1 overflow-y-auto p-4 focus:outline-none md:p-6"
+          className="relative min-w-0 flex-1 overflow-y-auto p-4 focus:outline-none md:p-6"
         >
           <Outlet />
         </main>
