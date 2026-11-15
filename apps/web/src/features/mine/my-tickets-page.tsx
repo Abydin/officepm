@@ -60,9 +60,9 @@ function TicketTable({
   label: string;
   onOpen: (key: string) => void;
 }) {
-  // On a phone the cells lose a third of their padding and titles and statuses break anywhere, so
-  // the narrowest the table can get is the Key column plus two short columns. It then fits any
-  // font, not only the one it was measured in.
+  // On a phone the cells lose a third of their padding. Titles may break anywhere, so the table can
+  // always shrink to the Key column plus the longest status word; a status wraps only at spaces,
+  // never inside a word.
   return (
     <div className="overflow-x-auto rounded-lg border border-line bg-raised">
       <table aria-label={label} className="w-full border-collapse text-left">
@@ -109,7 +109,7 @@ function TicketTable({
               <td className="px-3 py-2 whitespace-nowrap text-dim max-md:hidden">
                 {t.project_slug}/{t.board_slug}
               </td>
-              <td className="px-3 py-2 max-md:px-2 max-md:[overflow-wrap:anywhere] max-md:[&>span]:whitespace-normal">
+              <td className="px-3 py-2 max-md:px-2 max-md:[&>span]:whitespace-normal">
                 <StatusPill status={t.status} />
               </td>
               <td className="px-3 py-2 max-md:hidden">
