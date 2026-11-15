@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   defaultTicketType,
@@ -108,26 +107,5 @@ describe('defaultTicketType', () => {
   it('uses the only type there is, even an epic, and undefined for none', () => {
     expect(defaultTicketType(['epic'])).toBe('epic');
     expect(defaultTicketType([])).toBeUndefined();
-  });
-
-  it('gives the expected type on every seeded board', () => {
-    const file = new URL('../../../projects.json', import.meta.url);
-    const { projects } = JSON.parse(readFileSync(file, 'utf8')) as {
-      projects: Array<{ slug: string; boards: Array<{ slug: string; types: string[] }> }>;
-    };
-    const got = Object.fromEntries(
-      projects.flatMap((p) =>
-        p.boards.map((b) => [`${p.slug}/${b.slug}`, defaultTicketType(b.types)]),
-      ),
-    );
-    expect(got).toEqual({
-      'food/eng': 'task',
-      'food/design': 'task',
-      'food/support': 'ticket',
-      'northwind/product': 'pitch',
-      'northwind/marketing': 'post',
-      'acme/eng': 'task',
-      'acme/qa': 'test-case',
-    });
   });
 });

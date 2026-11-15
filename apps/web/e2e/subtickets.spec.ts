@@ -70,7 +70,7 @@ test('adds sub-tickets from the drawer, counts progress on the card and marks th
   await expect(drawer.getByLabel('Title', { exact: true })).toHaveValue('Sub: checkout page');
 });
 
-test('shows the one level rule when a sub-ticket is given a sub-ticket', async ({ page }) => {
+test('a sub-ticket offers no sub-ticket box and explains why', async ({ page }) => {
   const parent = await newTicket(page, 'Sub: depth');
   await page.goto(`/#/projects/food/boards/design?t=${parent}`);
   await addSubticket(page, 'Child');
@@ -81,10 +81,17 @@ test('shows the one level rule when a sub-ticket is given a sub-ticket', async (
     .click();
   await expect(drawer.getByLabel('Title', { exact: true })).toHaveValue('Child');
 
-  await addSubticket(page, 'Grandchild');
-  await expect(drawer.getByRole('alert')).toContainText('one level deep');
-  // Nothing was created: the child still has no sub-tickets.
-  await expect(drawer.getByRole('list', { name: 'Sub-tickets' })).toHaveCount(0);
+  await expect(drawer.getByText("Sub-tickets can't have their own.")).toBeVisible();
+  await expect(drawer.getByRole('textbox', { name: 'New sub-ticket title' })).toHaveCount(0);
+  // The server rule is still there for anyone who skips the page.
+  const child = (await (await page.request.get(`/api/tickets/${parent}`)).json()) as {
+    subtickets: Array<{ key: string }>;
+  };
+  const res = await page.request.post(`/api/tickets/${child.subtickets[0]!.key}/subtickets`, {
+    data: { title: 'Grandchild' },
+  });
+  expect(res.status()).toBe(409);
+  expect(await res.text()).toContain('one level deep');
 });
 
 test('closing a parent with open sub-tickets warns and needs Close anyway', async ({ page }) => {

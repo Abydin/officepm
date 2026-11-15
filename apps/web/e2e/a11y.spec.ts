@@ -253,12 +253,10 @@ for (const theme of ['dark', 'light'] as const) {
       await expect(drawer.getByRole('list', { name: 'Sub-tickets' })).toBeVisible();
       expect(await violations(page)).toEqual([]);
 
-      // The depth rule error showing inside a sub-ticket's drawer.
+      // A sub-ticket's drawer, where the explanation stands in for the box.
       await drawer.getByRole('button', { name: /First child/ }).click();
       await expect(drawer.getByLabel('Title', { exact: true })).toHaveValue('First child');
-      await drawer.getByRole('textbox', { name: 'New sub-ticket title' }).fill('Too deep');
-      await drawer.getByRole('textbox', { name: 'New sub-ticket title' }).press('Enter');
-      await expect(drawer.getByRole('alert')).toContainText('one level deep');
+      await expect(drawer.getByText("Sub-tickets can't have their own.")).toBeVisible();
       expect(await violations(page)).toEqual([]);
 
       // The handoff dialog with the warning.
