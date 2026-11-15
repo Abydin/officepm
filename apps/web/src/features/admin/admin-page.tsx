@@ -334,7 +334,9 @@ function AdminContent() {
                         }
                       />
                     </td>
-                    <td className={td}>{u.is_admin ? <Badge>Admin</Badge> : null}</td>
+                    <td className={td}>
+                      {u.is_admin ? <Badge>Admin</Badge> : <span className="text-dim">Member</span>}
+                    </td>
                     <td className={`${td} text-right`}>
                       <Button
                         size="sm"

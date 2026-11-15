@@ -27,7 +27,7 @@ needs Python, make and a C++ compiler.
 
 ```bash
 pnpm install
-pnpm seed          # demo data into .data/ (about 30 tickets, 6 users, 7 boards)
+pnpm seed          # demo data into .data/ (about 62 tickets, 6 users, 7 boards)
 pnpm dev           # builds, then serves the app on http://localhost:3000
 # sign in as maya.okafor@officepm.demo / demo-password
 ```

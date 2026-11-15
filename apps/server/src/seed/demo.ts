@@ -4,7 +4,16 @@ import type { OpenDatabase } from '../db/index.js';
 import { BCRYPT_ROUNDS } from '../modules/auth/service.js';
 import type { ProjectsRegistry } from '../projects-config.js';
 import type { BoardConfig, ProjectConfig } from '../projects-config.js';
-import { COMMENTS, DEMO_PASSWORD, DOD, emailOf, MAYA, TICKETS, USERS } from './demo-data.js';
+import {
+  COMMENTS,
+  DEMO_PASSWORD,
+  DOD,
+  emailOf,
+  MAYA,
+  PHASE_MOVES,
+  TICKETS,
+  USERS,
+} from './demo-data.js';
 
 export interface SeedSummary {
   tickets: number;
@@ -41,7 +50,8 @@ export function inspectTarget(db: OpenDatabase): { tickets: number; users: numbe
 
 /**
  * Fills the database behind `db` with the demo workspace: the same rows, in the same
- * shape, as tests/data-compat/frozen-v1/scripts/seed-demo.js. Throws SeedRefusal on a database that has
+ * shape, as tests/data-compat/frozen-v1/scripts/seed-demo.js plus the extra tickets, roles and one
+ * feature pipeline that the demo adds on top. Throws SeedRefusal on a database that has
  * tickets, or users when `allowExistingUsers` is not set; nothing is written then.
  * Ids and timestamps differ run to run (random UUIDs, dates relative to now).
  */
@@ -108,8 +118,10 @@ export function seedDemo(
 
     for (const u of USERS) {
       raw
-        .prepare('INSERT OR IGNORE INTO users (email, name, password, is_admin) VALUES (?,?,?,?)')
-        .run(emailOf(u.name), u.name, hash, u.admin ? 1 : 0);
+        .prepare(
+          'INSERT OR IGNORE INTO users (email, name, password, is_admin, department) VALUES (?,?,?,?,?)',
+        )
+        .run(emailOf(u.name), u.name, hash, u.admin ? 1 : 0, u.department);
     }
 
     // Sprints: two completed on the engineering board, one active, so velocity
@@ -152,10 +164,10 @@ export function seedDemo(
     const insert = raw.prepare(`INSERT INTO tickets
       (project_slug, board_slug, key, title, type, status, assignee, parent_key, level, description,
        acceptance_criteria, points, appetite, sprint_id, blocked, blocker_reason, priority, labels, due_date,
-       created_at, updated_at)
+       created_at, updated_at, phase, department)
       VALUES (@project_slug,@board_slug,@key,@title,@type,@status,@assignee,@parent_key,@level,@description,
        @acceptance_criteria,@points,@appetite,@sprint_id,@blocked,@blocker_reason,@priority,@labels,@due_date,
-       @created_at,@updated_at)`);
+       @created_at,@updated_at,@phase,@department)`);
 
     for (const t of TICKETS) {
       const { project, board } = boards[t.b]!;
@@ -184,11 +196,37 @@ export function seedDemo(
         due_date: t.due !== undefined ? day(t.due) : null,
         created_at: stamp(t.made, 9),
         updated_at: stamp(t.ago, 14),
+        phase: t.phase ?? null,
+        department: t.dept ?? null,
       });
     }
     for (const [prefix, n] of Object.entries(counters)) {
       raw.prepare('UPDATE counters SET next = ? WHERE prefix = ?').run(n + 1, prefix);
     }
+
+    // The feature on a pipeline: its moves so far, the way approving a handoff to a phase writes
+    // them. No recipients, so nobody has an unread handoff waiting in My Tickets.
+    const move = raw.prepare(
+      `INSERT INTO ticket_handoffs
+        (id, ticket_key, decision, from_status, to_status, reason, note, from_email, from_name, to_department, kind, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    );
+    PHASE_MOVES.forEach((m, i) => {
+      move.run(
+        crypto.randomUUID(),
+        keyOf[m.ticket],
+        m.decision,
+        m.from,
+        m.to,
+        m.reason ?? null,
+        m.note ?? null,
+        emailOf(m.by),
+        m.by,
+        m.dept,
+        'phase',
+        stamp(m.ago, 10 + i),
+      );
+    });
 
     // Support gets one completed week so its velocity card has data.
     const sup = boards['food/support']!;

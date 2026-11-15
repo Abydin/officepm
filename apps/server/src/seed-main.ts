@@ -6,7 +6,7 @@ import { seedDemo, SeedRefusal } from './seed/demo.js';
 
 const USAGE = `Usage: PM_DATA_DIR=<dir> pnpm run seed [--allow-non-empty]
 
-Fills <dir>/pm.db with the demo workspace (6 users, 30 tickets across the 7 boards, 4 sprints, 1 retro).
+Fills <dir>/pm.db with the demo workspace (6 users, 62 tickets across the 7 boards, one feature on its pipeline, 4 sprints, 1 retro).
 Writes only to PM_DATA_DIR, which must be set. Refuses a database that has tickets, and a
 data directory that already has users unless --allow-non-empty is given.
 Demo login: maya.okafor@officepm.demo / demo-password. Demo data only: never seed a server you expose.`;

@@ -42,6 +42,9 @@ describe('admin page', () => {
     expect(maya.getByText('Admin')).toBeVisible();
     const sam = within(users.getByRole('row', { name: /sam@officepm.demo/ }));
     expect(sam.queryByText('Admin')).not.toBeInTheDocument();
+    // Everyone has a role: a non-admin is a Member, not an empty cell.
+    expect(sam.getByText('Member')).toBeVisible();
+    expect(maya.queryByText('Member')).not.toBeInTheDocument();
 
     const boards = within(await screen.findByRole('table', { name: 'Boards' }));
     expect(boards.getByText('FOOD-ENG')).toBeVisible();

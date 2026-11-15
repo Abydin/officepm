@@ -1,7 +1,9 @@
-// The demo workspace content: the same users, tickets, comments and checklists as
+// The demo workspace content: every user, ticket, comment and checklist of
 // tests/data-compat/frozen-v1/scripts/seed-demo.js, which the e2e specs and the screenshots were written
-// against. Dates are relative to today (see demo.ts), so the active sprint always
-// looks mid-flight. Keep this in step with the v1 script while both exist.
+// against, with the same keys, plus more on top: extra tickets so each board has a spread, a role
+// (department) for each user, and one feature on a pipeline. Dates are relative to today (see
+// demo.ts), so the active sprint always looks mid-flight. Never reorder or edit the original 30
+// tickets: the parity test in demo.test.ts and the e2e specs depend on their keys.
 
 export const DEMO_PASSWORD = 'demo-password';
 export const DOMAIN = 'officepm.demo';
@@ -9,6 +11,8 @@ export const DOMAIN = 'officepm.demo';
 export interface DemoUser {
   name: string;
   admin?: boolean;
+  /** Shown as the Role column in admin and used to narrow the handoff picker. */
+  department: string;
 }
 
 export interface DemoTicket {
@@ -38,18 +42,39 @@ export interface DemoTicket {
   desc?: string;
   ac?: string[];
   blocked?: string;
+  /** Pipeline phase: where an epic is now, or which phase a ticket under it belongs to. */
+  phase?: string;
+  /** The team lane of a ticket under an epic on a pipeline. */
+  dept?: string;
+}
+
+/** One move of a feature along its pipeline, oldest first. */
+export interface DemoPhaseMove {
+  /** Epic handle. */
+  ticket: string;
+  decision: 'approve' | 'reject';
+  from: string;
+  to: string;
+  /** Display name of the person who made the move. */
+  by: string;
+  reason?: string;
+  note?: string;
+  /** Department the work went to. */
+  dept: string;
+  /** Days since the move. */
+  ago: number;
 }
 
 /** [ticket handle, author, body, days ago, hour]. */
 export type DemoComment = [string, string, string, number, number];
 
 export const USERS: DemoUser[] = [
-  { name: 'Maya Okafor', admin: true },
-  { name: 'Tunde Bakare' },
-  { name: 'Priya Nair' },
-  { name: 'Jonas Weber' },
-  { name: 'Chloe Martin' },
-  { name: 'Sam Adeyemi' },
+  { name: 'Maya Okafor', admin: true, department: 'Product' },
+  { name: 'Tunde Bakare', department: 'Engineering' },
+  { name: 'Priya Nair', department: 'QA' },
+  { name: 'Jonas Weber', department: 'Support' },
+  { name: 'Chloe Martin', department: 'Marketing' },
+  { name: 'Sam Adeyemi', department: 'Engineering' },
 ];
 export const emailOf = (name: string): string =>
   name.toLowerCase().replace(' ', '.') + '@' + DOMAIN;
@@ -89,6 +114,7 @@ export const TICKETS: DemoTicket[] = [
     ago: 1,
     made: 40,
     desc: 'Take payment once, show the right total, and send a receipt people can expense.',
+    phase: 'Engineering',
   },
   {
     id: 'e3',
@@ -141,6 +167,8 @@ export const TICKETS: DemoTicket[] = [
     pri: 'high',
     labels: ['payments'],
     ac: ['Each person pays only for what they picked', 'Shared items are divided evenly'],
+    phase: 'Engineering',
+    dept: 'Backend',
   },
   {
     id: 'a3',
@@ -157,6 +185,8 @@ export const TICKETS: DemoTicket[] = [
     made: 20,
     pri: 'medium',
     labels: ['payments', 'bug'],
+    phase: 'Engineering',
+    dept: 'Backend',
   },
   {
     id: 'a4',
@@ -215,6 +245,8 @@ export const TICKETS: DemoTicket[] = [
     labels: ['payments', 'bug'],
     due: 1,
     desc: 'A 15 percent voucher on three items rounds each line separately, so the total drifts.',
+    phase: 'Engineering',
+    dept: 'Backend',
   },
   {
     id: 'a7',
@@ -233,6 +265,8 @@ export const TICKETS: DemoTicket[] = [
     labels: ['payments', 'email'],
     due: 2,
     ac: ['Receipt lists each item and the tip', 'Plain text version exists'],
+    phase: 'QA',
+    dept: 'QA',
   },
   {
     id: 'a8',
@@ -329,6 +363,8 @@ export const TICKETS: DemoTicket[] = [
     pri: 'medium',
     labels: ['payments'],
     due: 12,
+    phase: 'Engineering',
+    dept: 'Backend',
   },
   {
     id: 'a13',
@@ -523,6 +559,424 @@ export const TICKETS: DemoTicket[] = [
     labels: ['finance'],
     due: 2,
   },
+
+  // More of the same boards, added so every board has a believable spread. Appended after the
+  // originals so their keys (FOOD-DES-1, ACME-ENG-2 and so on) do not move.
+
+  // Food / Design (kanban, WIP limit 3 in progress)
+  {
+    id: 'd3',
+    b: 'food/design',
+    title: 'Icon set for dietary tags',
+    type: 'asset',
+    status: 'Done',
+    who: CHLOE,
+    ago: 5,
+    made: 14,
+    pri: 'medium',
+    labels: ['ui', 'menu'],
+  },
+  {
+    id: 'd4',
+    b: 'food/design',
+    title: 'Dark mode palette for the checkout flow',
+    type: 'task',
+    status: 'Review',
+    who: MAYA,
+    ago: 1,
+    made: 7,
+    pri: 'high',
+    labels: ['ui'],
+    due: 2,
+  },
+  {
+    id: 'd5',
+    b: 'food/design',
+    title: 'Onboarding screens for group ordering',
+    type: 'task',
+    status: 'Backlog',
+    who: PRIYA,
+    ago: 0,
+    made: 5,
+    pri: 'high',
+    labels: ['ordering', 'ui'],
+    due: 5,
+  },
+  {
+    id: 'd6',
+    b: 'food/design',
+    title: 'Spacing and type scale audit',
+    type: 'task',
+    status: 'Backlog',
+    who: null,
+    ago: 10,
+    made: 12,
+    pri: 'low',
+    labels: ['ui'],
+  },
+  {
+    id: 'd7',
+    b: 'food/design',
+    title: 'Receipt email layout',
+    type: 'task',
+    status: 'Review',
+    who: CHLOE,
+    ago: 2,
+    made: 6,
+    pri: 'medium',
+    labels: ['email', 'payments'],
+  },
+  {
+    id: 'd8',
+    b: 'food/design',
+    title: 'Delivery tracking map pins',
+    type: 'asset',
+    status: 'Done',
+    who: CHLOE,
+    ago: 9,
+    made: 20,
+    pri: 'low',
+    labels: ['illustration'],
+  },
+
+  // Food / Support (scrumban)
+  {
+    id: 's4',
+    b: 'food/support',
+    title: 'Promo code not accepted at checkout',
+    type: 'ticket',
+    status: 'Triaged',
+    who: SAM,
+    ago: 1,
+    made: 2,
+    pri: 'medium',
+    labels: ['billing'],
+  },
+  {
+    id: 's5',
+    b: 'food/support',
+    title: 'App shows the wrong delivery window',
+    type: 'bug',
+    status: 'Triaged',
+    who: TUNDE,
+    ago: 1,
+    made: 3,
+    pri: 'high',
+    labels: ['delivery'],
+    due: 2,
+  },
+  {
+    id: 's6',
+    b: 'food/support',
+    title: 'Receipt PDF is missing the VAT line',
+    type: 'ticket',
+    status: 'Resolved',
+    who: JONAS,
+    ago: 2,
+    made: 6,
+    pri: 'medium',
+    labels: ['billing'],
+  },
+  {
+    id: 's7',
+    b: 'food/support',
+    title: 'Cannot remove an item from a shared order',
+    type: 'bug',
+    status: 'In Progress',
+    who: PRIYA,
+    ago: 0,
+    made: 1,
+    pri: 'high',
+    labels: ['group-order'],
+  },
+  {
+    id: 's8',
+    b: 'food/support',
+    title: 'Refund has not arrived after seven days',
+    type: 'ticket',
+    status: 'Waiting on Customer',
+    who: MAYA,
+    ago: 2,
+    made: 9,
+    pri: 'medium',
+    labels: ['billing'],
+    due: 1,
+    desc: 'Refund was issued on our side. Asked for the last four digits of the card to trace it with the provider.',
+  },
+  {
+    id: 's9',
+    b: 'food/support',
+    title: 'Order stuck on "Preparing" for over an hour',
+    type: 'bug',
+    status: 'Inbox',
+    who: null,
+    ago: 0,
+    made: 0,
+    pri: 'urgent',
+    labels: ['delivery'],
+  },
+
+  // Northwind / Product (shape up)
+  {
+    id: 'p3',
+    b: 'northwind/product',
+    title: 'Saved lunch groups',
+    type: 'pitch',
+    level: 'story',
+    status: 'Bet',
+    who: JONAS,
+    appetite: '2 weeks',
+    ago: 4,
+    made: 10,
+    pri: 'medium',
+    labels: ['retention'],
+  },
+  {
+    id: 'p4',
+    b: 'northwind/product',
+    title: 'Weekly spend summary for office managers',
+    type: 'pitch',
+    level: 'story',
+    status: 'Cooldown',
+    who: TUNDE,
+    appetite: '6 weeks',
+    ago: 3,
+    made: 52,
+    pri: 'medium',
+    labels: ['revenue'],
+  },
+  {
+    id: 'p5',
+    b: 'northwind/product',
+    title: 'Dietary preferences in the profile',
+    type: 'pitch',
+    level: 'story',
+    status: 'Shipped',
+    who: CHLOE,
+    appetite: '2 weeks',
+    ago: 12,
+    made: 45,
+    pri: 'low',
+    labels: ['menu'],
+  },
+  {
+    id: 'p6',
+    b: 'northwind/product',
+    title: 'Referral credits',
+    type: 'pitch',
+    level: 'story',
+    status: 'Shipped',
+    who: SAM,
+    appetite: '6 weeks',
+    ago: 20,
+    made: 70,
+    pri: 'medium',
+    labels: ['revenue'],
+  },
+  {
+    id: 'p7',
+    b: 'northwind/product',
+    title: 'Reminder email is sent twice on Mondays',
+    type: 'bug',
+    level: 'bug',
+    status: 'Building',
+    who: PRIYA,
+    ago: 1,
+    made: 3,
+    pri: 'high',
+    labels: ['retention'],
+  },
+
+  // Northwind / Marketing (kanban)
+  {
+    id: 'm3',
+    b: 'northwind/marketing',
+    title: 'Teaser video for the group ordering launch',
+    type: 'asset',
+    status: 'Ideas',
+    who: null,
+    ago: 5,
+    made: 5,
+    pri: 'low',
+    labels: ['social'],
+  },
+  {
+    id: 'm4',
+    b: 'northwind/marketing',
+    title: 'Customer story: the Lagos office lunch club',
+    type: 'post',
+    status: 'Ideas',
+    who: CHLOE,
+    ago: 3,
+    made: 9,
+    pri: 'medium',
+    labels: ['social'],
+  },
+  {
+    id: 'm5',
+    b: 'northwind/marketing',
+    title: 'Launch day announcement',
+    type: 'post',
+    status: 'Published',
+    who: SAM,
+    ago: 6,
+    made: 14,
+    pri: 'high',
+    labels: ['social', 'email'],
+  },
+  {
+    id: 'm6',
+    b: 'northwind/marketing',
+    title: 'Referral programme landing page copy',
+    type: 'campaign',
+    status: 'In Progress',
+    who: CHLOE,
+    ago: 1,
+    made: 7,
+    pri: 'medium',
+    labels: ['revenue'],
+    due: 6,
+  },
+  {
+    id: 'm7',
+    b: 'northwind/marketing',
+    title: 'Monthly newsletter, kitchen edition',
+    type: 'campaign',
+    status: 'Published',
+    who: SAM,
+    ago: 10,
+    made: 18,
+    pri: 'low',
+    labels: ['email'],
+  },
+
+  // Acme / Engineering (waterfall)
+  {
+    id: 'x3',
+    b: 'acme/eng',
+    title: 'Audit log for supplier edits',
+    type: 'change-request',
+    status: 'Design',
+    who: PRIYA,
+    ago: 2,
+    made: 12,
+    pri: 'medium',
+    labels: ['security'],
+  },
+  {
+    id: 'x4',
+    b: 'acme/eng',
+    title: 'Purchase order approval workflow',
+    type: 'task',
+    status: 'Implementation',
+    who: MAYA,
+    ago: 0,
+    made: 20,
+    pri: 'high',
+    labels: ['finance'],
+    due: 7,
+    desc: 'Orders over the approver limit wait for a second signature before they go to the supplier.',
+  },
+  {
+    id: 'x5',
+    b: 'acme/eng',
+    title: 'Supplier onboarding checklist',
+    type: 'task',
+    status: 'Testing',
+    who: SAM,
+    ago: 1,
+    made: 25,
+    pri: 'medium',
+    labels: ['onboarding'],
+  },
+  {
+    id: 'x6',
+    b: 'acme/eng',
+    title: 'Invoice PDF footer shows the wrong company name',
+    type: 'bug',
+    status: 'Testing',
+    who: JONAS,
+    ago: 0,
+    made: 3,
+    pri: 'high',
+    labels: ['finance'],
+    due: 1,
+  },
+  {
+    id: 'x7',
+    b: 'acme/eng',
+    title: 'Role-based access for the supplier portal',
+    type: 'task',
+    status: 'Deployed',
+    who: TUNDE,
+    ago: 8,
+    made: 35,
+    pri: 'medium',
+    labels: ['security'],
+  },
+  {
+    id: 'x8',
+    b: 'acme/eng',
+    title: 'Payment terms field on supplier records',
+    type: 'change-request',
+    status: 'Requirements',
+    who: PRIYA,
+    ago: 5,
+    made: 9,
+    pri: 'low',
+    labels: ['finance'],
+  },
+
+  // Acme / QA (kanban)
+  {
+    id: 'q3',
+    b: 'acme/qa',
+    title: 'Verify purchase order approval emails',
+    type: 'test-case',
+    status: 'To Verify',
+    who: SAM,
+    ago: 1,
+    made: 2,
+    pri: 'medium',
+    labels: ['finance'],
+  },
+  {
+    id: 'q4',
+    b: 'acme/qa',
+    title: 'Verify CSV export with exactly 101 lines',
+    type: 'test-case',
+    status: 'Passed',
+    who: JONAS,
+    ago: 1,
+    made: 2,
+    pri: 'high',
+    labels: ['finance'],
+  },
+  {
+    id: 'q5',
+    b: 'acme/qa',
+    title: 'Verify SSO logout redirect',
+    type: 'test-case',
+    status: 'Passed',
+    who: PRIYA,
+    ago: 1,
+    made: 4,
+    pri: 'medium',
+    labels: ['security'],
+  },
+  {
+    id: 'q6',
+    b: 'acme/qa',
+    title: 'Supplier portal drops a 3 MB logo upload without saying why',
+    type: 'bug',
+    status: 'Failed',
+    who: TUNDE,
+    ago: 1,
+    made: 2,
+    pri: 'medium',
+    labels: ['ui'],
+    due: 3,
+  },
 ];
 
 export const COMMENTS: DemoComment[] = [
@@ -568,6 +1022,68 @@ export const COMMENTS: DemoComment[] = [
   ],
   ['p1', PRIYA, 'Week two. The reminder email is wired, the unsubscribe path is next.', 2, 16],
   ['x1', TUNDE, 'Identity provider metadata imported. Testing the logout redirect now.', 1, 13],
+  [
+    's7',
+    PRIYA,
+    'Reproduced on the staging build. The remove button only fails for the host.',
+    0,
+    11,
+  ],
+  ['s8', MAYA, 'Asked for the last four digits of the card so the provider can trace it.', 2, 15],
+  ['x4', MAYA, 'Approver limit comes from the supplier record, so x8 has to land first.', 0, 10],
+  ['x6', JONAS, 'Footer uses the supplier name instead of ours on multi-company invoices.', 0, 12],
+  ['d4', MAYA, 'Contrast passes on the dark palette. Waiting on the button states.', 1, 16],
+  [
+    'q6',
+    TUNDE,
+    'The upload limit is 2 MB on the proxy. The portal should say so before it uploads.',
+    1,
+    14,
+  ],
+];
+
+/** The pipeline history of the one seeded feature, oldest first. The newest move lands on its phase. */
+export const PHASE_MOVES: DemoPhaseMove[] = [
+  {
+    ticket: 'e2',
+    decision: 'approve',
+    from: 'Product',
+    to: 'Design',
+    by: MAYA,
+    note: 'Scope is one payment per order and a receipt by email.',
+    dept: 'Design',
+    ago: 32,
+  },
+  {
+    ticket: 'e2',
+    decision: 'reject',
+    from: 'Design',
+    to: 'Product',
+    by: CHLOE,
+    reason: 'The receipt needs a VAT breakdown and the spec does not say where it comes from.',
+    dept: 'Product',
+    ago: 29,
+  },
+  {
+    ticket: 'e2',
+    decision: 'approve',
+    from: 'Product',
+    to: 'Design',
+    by: MAYA,
+    note: 'VAT comes from the vendor record. Spec updated.',
+    dept: 'Design',
+    ago: 27,
+  },
+  {
+    ticket: 'e2',
+    decision: 'approve',
+    from: 'Design',
+    to: 'Engineering',
+    by: CHLOE,
+    note: 'Checkout and receipt mockups are final.',
+    dept: 'Engineering',
+    ago: 20,
+  },
 ];
 
 export const DOD: Record<string, string[]> = {

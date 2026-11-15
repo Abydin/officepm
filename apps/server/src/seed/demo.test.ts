@@ -135,6 +135,95 @@ describe('demo seeder', () => {
   });
 });
 
+describe('demo seeder: a workspace worth demonstrating', () => {
+  const seeded = () => {
+    const { dir, db } = freshDb();
+    seedDemo(db, registry());
+    return { dir, db };
+  };
+
+  it('gives every board a believable spread: several tickets across at least three statuses', () => {
+    const { db } = seeded();
+    const reg = registry();
+    for (const { project, board } of reg.allBoards()) {
+      const rows = db.raw
+        .prepare('SELECT status FROM tickets WHERE project_slug = ? AND board_slug = ?')
+        .all(project.slug, board.slug) as Array<{ status: string }>;
+      const label = `${project.slug}/${board.slug}`;
+      expect(rows.length, `${label} ticket count`).toBeGreaterThanOrEqual(6);
+      expect(new Set(rows.map((r) => r.status)).size, `${label} statuses`).toBeGreaterThanOrEqual(
+        3,
+      );
+    }
+    expect(TICKETS.length).toBeLessThan(80);
+  });
+
+  it('gives every user a department, shown as the Role column in admin', () => {
+    const { db } = seeded();
+    const rows = db.raw.prepare('SELECT name, department FROM users').all() as Array<{
+      name: string;
+      department: string | null;
+    }>;
+    expect(rows).toHaveLength(USERS.length);
+    for (const r of rows) expect(r.department, r.name).toBeTruthy();
+  });
+
+  it('puts one Food/Engineering feature part way down its pipeline, with a history', async () => {
+    const { dir, db } = seeded();
+    const app = createApp({
+      config: loadConfig({ PM_DATA_DIR: dir, ADMIN_PASSWORD: 'unused' }),
+      db,
+      projects: registry(),
+      events: new EventBus(),
+      dashboardCache: new Map(),
+    });
+    const login = await app.request('/api/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'maya.okafor@officepm.demo', password: DEMO_PASSWORD }),
+    });
+    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    const epics = db.raw
+      .prepare(
+        "SELECT key FROM tickets WHERE project_slug = 'food' AND board_slug = 'eng' AND level = 'epic' AND phase IS NOT NULL",
+      )
+      .all() as Array<{ key: string }>;
+    expect(epics).toHaveLength(1);
+    const res = await app.request(`/api/tickets/${epics[0]!.key}/pipeline`, {
+      headers: { cookie },
+    });
+    expect(res.status).toBe(200);
+    const pipeline = (await res.json()) as {
+      in_use: boolean;
+      completed: boolean;
+      current: string;
+      phases: Array<{ name: string; total: number }>;
+      history: Array<{ decision: string; from_phase: string; to_phase: string | null }>;
+    };
+    expect(pipeline.in_use).toBe(true);
+    expect(pipeline.completed).toBe(false);
+    const names = pipeline.phases.map((p) => p.name);
+    const at = names.indexOf(pipeline.current);
+    expect(at, 'past the first phase and before the last').toBeGreaterThan(0);
+    expect(at).toBeLessThan(names.length - 1);
+    expect(pipeline.phases[at]!.total, 'tickets are tagged with the current phase').toBeGreaterThan(
+      0,
+    );
+    expect(pipeline.history.length).toBeGreaterThanOrEqual(2);
+    expect(pipeline.history.at(-1)!.to_phase).toBe(pipeline.current);
+    expect(pipeline.history.some((h) => h.decision === 'reject')).toBe(true);
+  });
+
+  it('leaves the other features, and the project pipeline settings, untouched', () => {
+    const { db } = seeded();
+    expect(db.raw.prepare('SELECT COUNT(*) AS n FROM project_phases').get()).toEqual({ n: 0 });
+    const onPipeline = db.raw
+      .prepare("SELECT COUNT(*) AS n FROM tickets WHERE level = 'epic' AND phase IS NOT NULL")
+      .get() as { n: number };
+    expect(onPipeline.n).toBe(1);
+  });
+});
+
 // The frozen v1 script is the reference. Ids are random UUIDs and dates are relative
 // to the moment of the run, so rows are compared on content, not on ids or timestamps.
 describe.skipIf(!fs.existsSync(LEGACY_SEED))(
@@ -164,25 +253,48 @@ describe.skipIf(!fs.existsSync(LEGACY_SEED))(
       expect(b).toEqual(a);
       return a.length;
     };
+    // The v2 demo adds tickets, comments and a pipeline on top of what v1 seeds, so for those
+    // tables every v1 row has to be in v2 unchanged, and v2 may have more.
+    const includes = (sql: string) => {
+      const a = v1.raw.prepare(sql).all();
+      const have = new Set(
+        v2.raw
+          .prepare(sql)
+          .all()
+          .map((r) => JSON.stringify(r)),
+      );
+      for (const row of a) expect(have.has(JSON.stringify(row)), JSON.stringify(row)).toBe(true);
+      return a.length;
+    };
 
     it('has the same boards, users and counters', () => {
       expect(same('SELECT * FROM board_settings ORDER BY project_slug, board_slug')).toBe(7);
-      expect(same('SELECT * FROM counters ORDER BY prefix')).toBe(7);
+      // Each board's key counter has moved on by the tickets the demo added to it.
+      const next = (db: OpenDatabase) =>
+        db.raw.prepare('SELECT prefix, next FROM counters ORDER BY prefix').all() as Array<{
+          prefix: string;
+          next: number;
+        }>;
+      const [a, b] = [next(v1), next(v2)];
+      expect(b.map((r) => r.prefix)).toEqual(a.map((r) => r.prefix));
+      b.forEach((r, i) => expect(r.next).toBeGreaterThanOrEqual(a[i]!.next));
+      expect(a).toHaveLength(7);
       expect(same('SELECT email, name, is_admin FROM users ORDER BY email')).toBe(USERS.length);
     });
 
-    it('has the same tickets, field for field apart from dates and sprint ids', () => {
+    it('has every v1 ticket, field for field apart from dates and sprint ids, and more', () => {
       const n =
-        same(`SELECT project_slug, board_slug, key, title, type, status, assignee, parent_key, level,
+        includes(`SELECT project_slug, board_slug, key, title, type, status, assignee, parent_key, level,
       description, acceptance_criteria, points, appetite, sprint_id IS NOT NULL AS in_sprint, blocked,
       blocker_reason, priority, labels, due_date IS NOT NULL AS has_due FROM tickets ORDER BY key`);
-      expect(n).toBe(TICKETS.length);
+      expect(n).toBe(30);
+      expect(TICKETS.length).toBeGreaterThan(n);
     });
 
-    it('has the same sprints, comments, checklists, links, docs, retro and GitHub rows', () => {
+    it('has the same sprints, and every v1 comment, checklist, links, docs, retro and GitHub rows', () => {
       same('SELECT project_slug, board_slug, name, kind, status FROM sprints ORDER BY name');
-      same('SELECT ticket_key, author, body, source FROM comments ORDER BY ticket_key, body');
-      same('SELECT ticket_key, item, done FROM ticket_dod ORDER BY ticket_key, item');
+      includes('SELECT ticket_key, author, body, source FROM comments ORDER BY ticket_key, body');
+      includes('SELECT ticket_key, item, done FROM ticket_dod ORDER BY ticket_key, item');
       same('SELECT ticket_key, title, url, author FROM ticket_links ORDER BY ticket_key');
       same('SELECT project_slug, title, kind, url, body, author FROM project_docs ORDER BY title');
       same('SELECT project_slug, board_slug, name, status FROM retros');

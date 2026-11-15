@@ -229,7 +229,8 @@ test.describe('the feature pipeline scenario', () => {
   test('a project that never starts a pipeline shows no pipeline noise', async ({ page }) => {
     await signIn(page);
     await page.goto('/#/projects/food/boards/eng/epics');
-    const plain = page.getByRole('region', { name: /Payments and receipts/ });
+    // The demo seed puts Payments and receipts on a pipeline; Group ordering never started one.
+    const plain = page.getByRole('region', { name: /Group ordering/ });
     await expect(plain).toBeVisible();
     await expect(plain.getByRole('list', { name: 'Pipeline' })).toHaveCount(0);
     await expect(plain.getByText('Add ticket to this feature')).toHaveCount(0);
