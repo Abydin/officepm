@@ -6,7 +6,7 @@ import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { openDatabase } from './db/index.js';
 import { EventBus } from './events.js';
-import { listenErrorMessage } from './listen-error.js';
+import { listenFailureLines } from './listen-error.js';
 import { ProjectsConfigError, ProjectsRegistry, readProjectsConfig } from './projects-config.js';
 
 /** Starts the server. Exits with status 1 and a named reason on a bad projects.json. */
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
     dashboardCache: new Map(),
   };
   seedBoards(ctx);
-  await bootstrapAdmin(ctx);
+  const createdAdmin = await bootstrapAdmin(ctx);
   startSessionCleanup(ctx);
   ctx.events.startHeartbeat();
 
@@ -57,9 +57,10 @@ async function main(): Promise<void> {
     );
   });
   server.on('error', (err) => {
-    const friendly = listenErrorMessage(err, port);
-    if (!friendly) throw err;
-    console.error(friendly);
+    const password = createdAdmin && config.adminPasswordGenerated ? config.adminPassword : null;
+    const lines = listenFailureLines(err, port, password);
+    if (!lines) throw err;
+    for (const line of lines) console.error(line);
     process.exit(1);
   });
 }

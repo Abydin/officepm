@@ -37,8 +37,11 @@ export function seedBoards(ctx: AppContext): void {
   });
 }
 
-/** PRD 6.12: no self-signup, so the first admin has to exist before anyone logs in. */
-export async function bootstrapAdmin(ctx: AppContext): Promise<void> {
+/**
+ * PRD 6.12: no self-signup, so the first admin has to exist before anyone logs in.
+ * Returns true when this call created the admin, false when one already existed.
+ */
+export async function bootstrapAdmin(ctx: AppContext): Promise<boolean> {
   const { orm } = ctx.db;
   const { users } = schema;
   const count =
@@ -46,7 +49,7 @@ export async function bootstrapAdmin(ctx: AppContext): Promise<void> {
       .select({ n: sql<number>`count(*)` })
       .from(users)
       .get()?.n ?? 0;
-  if (count > 0) return;
+  if (count > 0) return false;
   const { adminEmail, adminPassword, adminPasswordGenerated } = ctx.config;
   const hash = await bcrypt.hash(adminPassword, BCRYPT_ROUNDS);
   orm.insert(users).values({ email: adminEmail, name: 'Admin', password: hash, is_admin: 1 }).run();
@@ -66,6 +69,7 @@ export async function bootstrapAdmin(ctx: AppContext): Promise<void> {
         ' (password from ADMIN_PASSWORD env var)',
     );
   }
+  return true;
 }
 
 /**
