@@ -11,7 +11,7 @@ export function DueChip({ date, done = false }: { date: string | null; done?: bo
   const label = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : d === -1 ? 'Yesterday' : shortDate(date);
   return (
     <span
-      title={`Due ${date}`}
+      title={`Due ${shortDate(date)}`}
       className={cn(
         'inline-flex items-center gap-1 text-xs',
         late ? 'text-err' : soon ? 'text-warn' : 'text-dim',

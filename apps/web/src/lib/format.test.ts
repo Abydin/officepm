@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { dayDiff, initialsOf, personName, shortDate, statusColor, timeAgo } from './format';
+import {
+  dayDiff,
+  initialsOf,
+  longDay,
+  personName,
+  shortDate,
+  statusColor,
+  timeAgo,
+} from './format';
 
 describe('format', () => {
   it('turns an email or a name into a readable person', () => {
@@ -26,6 +34,10 @@ describe('format', () => {
     expect(dayDiff('2026-11-14', now)).toBe(3);
     expect(dayDiff('2026-11-10', now)).toBe(-1);
     expect(shortDate('2026-11-03')).toBe('3 Nov');
+  });
+
+  it('writes the day heading in the same short style as every other date', () => {
+    expect(longDay(new Date(2026, 10, 15))).toBe('Sunday 15 Nov');
   });
 
   it('colours a status by what its name says', () => {

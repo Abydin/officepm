@@ -11,6 +11,7 @@ import { ErrorAlert } from '@/components/ui/alert';
 import { BurndownChart } from '@/features/overview/burndown-chart';
 import { useTicketDrawer } from '@/features/tickets/use-ticket-drawer';
 import { errorMessage } from '@/lib/api';
+import { shortDate } from '@/lib/format';
 import { burndownQuery, useSetTicketSprint, useUpdateSprint } from './api';
 import { MoveSelect } from './move-select';
 import { sprintStats } from './sprint-plan';
@@ -69,7 +70,8 @@ export function SprintCard({
       <p className="my-1.5 text-dim">
         {stats.total} {stats.total === 1 ? 'ticket' : 'tickets'}
         {board.points && ` · ${stats.points} pt`}
-        {sprint.start_date && ` · ${sprint.start_date} to ${sprint.end_date ?? '?'}`}
+        {sprint.start_date &&
+          ` \u00B7 ${shortDate(sprint.start_date)} to ${sprint.end_date ? shortDate(sprint.end_date) : '?'}`}
         {' · '}
         {stats.percent}%
       </p>

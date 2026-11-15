@@ -47,12 +47,26 @@ export function dayDiff(iso: string, now: Date = new Date()): number {
   );
 }
 
+/**
+ * The one way a calendar date is written on screen: "18 Nov". The tooltip, the sprint range and the
+ * burndown axis all use it, so no screen shows 2026-11-18 or 18/11/2026. Native date inputs keep the
+ * browser's own format.
+ */
 export function shortDate(iso: string): string {
   return new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
     timeZone: 'UTC',
   });
+}
+
+/** A local day as "Sunday 15 Nov": the weekday, then the same short date as everywhere else. */
+export function longDay(now: Date = new Date()): string {
+  const iso = [now.getFullYear(), now.getMonth() + 1, now.getDate()]
+    .map((n) => String(n).padStart(2, '0'))
+    .join('-');
+  const weekday = now.toLocaleDateString('en-GB', { weekday: 'long' });
+  return `${weekday} ${shortDate(iso)}`;
 }
 
 /** v1's heuristic: colour a status by what its name says. Returns a CSS colour token. */

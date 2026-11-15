@@ -95,7 +95,7 @@ test('Shape Up offers cycles and cooldowns, with a six week default', async ({ p
   await page.getByLabel('Cycle name').fill('E2E Cycle');
   await page.getByRole('button', { name: 'Create cycle' }).click();
   const cycle = page.getByRole('region', { name: 'E2E Cycle' });
-  await expect(cycle).toContainText('2030-01-07 to 2030-02-18');
+  await expect(cycle).toContainText('7 Jan to 18 Feb');
 
   await page.getByLabel('Kind').selectOption('cooldown');
   await expect(page.getByLabel('End date')).toHaveValue('2030-01-21');

@@ -61,6 +61,9 @@ describe('backlog view', () => {
     expect(card).toHaveTextContent('1 ticket');
     expect(card).toHaveTextContent('3 pt');
     expect(card).toHaveTextContent('100%');
+    // Dates read the same everywhere on screen: "1 Oct", never 2026-10-01.
+    expect(card).toHaveTextContent('1 Oct to 15 Oct');
+    expect(card).not.toHaveTextContent('2026-10-01');
     expect(screen.getByRole('heading', { name: 'Unscheduled backlog (2 · 7 pt)' })).toBeVisible();
     expect(screen.getByRole('button', { name: /FOOD-ENG-2/ })).toBeVisible();
   });

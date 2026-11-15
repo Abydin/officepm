@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState, ErrorAlert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { errorMessage } from '@/lib/api';
-import { dayDiff, timeAgo } from '@/lib/format';
+import { dayDiff, longDay, timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { dashboardQuery } from './api';
 import { BurndownChart } from './burndown-chart';
@@ -260,11 +260,7 @@ function DashboardSkeleton() {
 
 export function OverviewPage() {
   const dashboard = useQuery(dashboardQuery);
-  const today = new Date().toLocaleDateString('en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
+  const today = longDay();
 
   return (
     <>
