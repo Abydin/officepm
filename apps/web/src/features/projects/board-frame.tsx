@@ -1,4 +1,4 @@
-import { MAX_TITLE_LENGTH } from '@officepm/shared';
+import { defaultTicketType, MAX_TITLE_LENGTH } from '@officepm/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
@@ -7,7 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorAlert } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useTicketDrawer } from '@/features/tickets/use-ticket-drawer';
 import { errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { boardQuery, boardTicketsQuery, useCreateTicket } from './api';
@@ -24,7 +26,10 @@ export function BoardFrame() {
   const board = useQuery(boardQuery(slug, boardSlug));
   const tickets = useQuery(boardTicketsQuery(slug, boardSlug));
   const createTicket = useCreateTicket();
+  const { open: openTicket } = useTicketDrawer();
   const [title, setTitle] = useState('');
+  const [picked, setPicked] = useState<string | null>(null);
+  const [needTitle, setNeedTitle] = useState(false);
 
   if (board.isError) {
     return (
@@ -53,15 +58,24 @@ export function BoardFrame() {
   const subCount = (tickets.data?.length ?? 0) - topLevel.length;
   const doneCount = topLevel.filter((t) => b.done_statuses.includes(t.status)).length;
   const tabs = boardTabs(b);
-  const typeForNew = b.types[0];
+  const typeForNew = picked && b.types.includes(picked) ? picked : defaultTicketType(b.types);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const trimmed = title.trim();
-    if (!trimmed || !typeForNew) return;
+    if (!trimmed) {
+      setNeedTitle(true);
+      return;
+    }
+    if (!typeForNew) return;
     createTicket.mutate(
       { project_slug: slug, board_slug: boardSlug, title: trimmed, type: typeForNew },
-      { onSuccess: () => setTitle('') },
+      {
+        onSuccess: (ticket) => {
+          setTitle('');
+          openTicket(ticket.key);
+        },
+      },
     );
   };
 
@@ -90,14 +104,31 @@ export function BoardFrame() {
           placeholder="New ticket title, press Enter"
           value={title}
           maxLength={MAX_TITLE_LENGTH}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            setNeedTitle(false);
+          }}
           className="min-w-0 flex-1"
         />
-        <Button type="submit" variant="primary" disabled={!title.trim() || createTicket.isPending}>
+        <Select
+          aria-label="Ticket type"
+          value={typeForNew ?? ''}
+          onChange={(e) => setPicked(e.target.value)}
+          className="w-auto shrink-0"
+        >
+          {b.types.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </Select>
+        {/* Not disabled when the title is empty: a disabled default button also stops Enter, silently. */}
+        <Button type="submit" variant="primary" disabled={createTicket.isPending}>
           <Plus className="size-4" aria-hidden="true" />
           Create
         </Button>
       </form>
+      {needTitle && <ErrorAlert className="mb-3">Enter a title</ErrorAlert>}
       {createTicket.isError && (
         <ErrorAlert className="mb-3">{errorMessage(createTicket.error)}</ErrorAlert>
       )}

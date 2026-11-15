@@ -109,12 +109,10 @@ export function useShortcuts({ openPalette, openHelp, paletteOpen }: ShortcutAct
       }
 
       if (key === 'c') {
-        if (s.match) {
-          document.getElementById('quick-add')?.focus();
-          e.preventDefault();
-        } else {
-          s.openPalette('create');
-        }
+        // Either way the key is spent here: left alone, the palette's autofocused filter would receive the "c".
+        e.preventDefault();
+        if (s.match) document.getElementById('quick-add')?.focus();
+        else s.openPalette('create');
         return;
       }
 

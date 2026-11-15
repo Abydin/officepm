@@ -23,6 +23,17 @@ export const isEpic = (t: { level?: string | null; type: string }): boolean =>
   t.level === EPIC_LEVEL || t.type === EPIC_TYPE;
 
 /**
+ * The type a new ticket gets when nobody picked one: the board's first type, unless that
+ * is an epic (a quick-add must not make an epic by accident), then "task" if the board has
+ * one, else the first type that is not an epic. A board of only epics gets its epic.
+ */
+export function defaultTicketType(types: readonly string[]): string | undefined {
+  const first = types[0];
+  if (first === undefined || first !== EPIC_TYPE) return first;
+  return types.includes('task') ? 'task' : (types.find((t) => t !== EPIC_TYPE) ?? first);
+}
+
+/**
  * Why `child` cannot become a sub-ticket of `parent`, or null when it can. Every
  * refusal is a 409: the request is well formed but the tickets are in the wrong state.
  */

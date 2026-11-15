@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { applyTheme } from '@/lib/theme';
 import { jsonResponse, renderApp, stubApi } from '@/test/helpers';
-import { makeTicket, signedIn, ticketRoutes } from '@/test/fixtures';
+import { engRoutes, makeTicket, signedIn, ticketRoutes } from '@/test/fixtures';
 
 afterEach(() => applyTheme('dark'));
 
@@ -109,6 +109,30 @@ describe('command palette', () => {
     });
   });
 
+  it('creates a task, not the leading epic, on a board whose first type is epic', async () => {
+    const created = { current: makeTicket({ id: 7, key: 'FOOD-ENG-7', board_slug: 'eng' }) };
+    const fetchMock = stubApi({
+      ...engRoutes(),
+      ...ticketRoutes(created),
+      'POST /api/tickets': () => jsonResponse(created.current, 201),
+    });
+    const user = userEvent.setup();
+    renderApp('/overview');
+    await user.keyboard('{Control>}k{/Control}');
+    const dialog = await palette();
+    await user.click(await within(dialog).findByRole('option', { name: /Create ticket/ }));
+    await user.click(await within(dialog).findByRole('option', { name: /Food \/ Engineering/ }));
+    await user.type(
+      within(dialog).getByRole('combobox', { name: 'Search commands and tickets' }),
+      'Login{Enter}',
+    );
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true),
+    );
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ board_slug: 'eng', type: 'task' });
+  });
+
   it('opens with / and the help with ?, but not while typing in a field', async () => {
     setup();
     const user = userEvent.setup();
@@ -127,6 +151,19 @@ describe('command palette', () => {
 
     await user.keyboard('/');
     await palette();
+  });
+
+  it('does not type the C that opens the palette into its filter on a page with no board', async () => {
+    setup();
+    const user = userEvent.setup();
+    renderApp('/overview');
+    await screen.findByRole('navigation', { name: 'Projects and boards' });
+    await user.click(document.body);
+    await user.keyboard('c');
+    const dialog = await palette();
+    expect(
+      within(dialog).getByRole('combobox', { name: 'Search commands and tickets' }),
+    ).toHaveValue('');
   });
 
   it('stops the new-ticket title box at the server cap', async () => {

@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import type { Board, Project } from '@officepm/shared';
+import { defaultTicketType, type Board, type Project } from '@officepm/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Command } from 'cmdk';
 import { ArrowLeft, Keyboard, LayoutDashboard, ListChecks, Moon, Plus, Sun } from 'lucide-react';
@@ -297,7 +297,7 @@ export function CommandPalette({ initialPage, onOpenChange, onOpenHelp }: Comman
                       className={cn(item)}
                       disabled={create.isPending}
                       onSelect={() => {
-                        const type = page.board.types[0];
+                        const type = defaultTicketType(page.board.types);
                         if (!type) return;
                         create.mutate(
                           {

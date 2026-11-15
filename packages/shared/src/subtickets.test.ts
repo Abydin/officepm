@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  defaultTicketType,
   openSubticketsMessage,
   SubticketCreateSchema,
   SubticketOfSchema,
@@ -85,5 +87,45 @@ describe('request schemas', () => {
     expect(SubticketOfSchema.safeParse({ parent_key: null }).success).toBe(true);
     expect(SubticketOfSchema.safeParse({ parent_key: '' }).success).toBe(false);
     expect(SubticketOfSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('defaultTicketType', () => {
+  it('skips a leading epic and prefers task', () => {
+    expect(defaultTicketType(['epic', 'story', 'task', 'bug'])).toBe('task');
+  });
+
+  it('falls back to the first non-epic type when there is no task', () => {
+    expect(defaultTicketType(['epic', 'story', 'bug'])).toBe('story');
+  });
+
+  it("keeps a board's own first type when it is not an epic", () => {
+    expect(defaultTicketType(['pitch', 'task', 'bug'])).toBe('pitch');
+    expect(defaultTicketType(['post', 'campaign', 'asset'])).toBe('post');
+    expect(defaultTicketType(['ticket', 'bug'])).toBe('ticket');
+  });
+
+  it('uses the only type there is, even an epic, and undefined for none', () => {
+    expect(defaultTicketType(['epic'])).toBe('epic');
+    expect(defaultTicketType([])).toBeUndefined();
+  });
+
+  it('gives the expected type on every seeded board', () => {
+    const file = new URL('../../../projects.json', import.meta.url);
+    const { projects } = JSON.parse(readFileSync(file, 'utf8')) as {
+      projects: Array<{ slug: string; boards: Array<{ slug: string; types: string[] }> }>;
+    };
+    const got = Object.fromEntries(
+      projects.flatMap((p) => p.boards.map((b) => [`${p.slug}/${b.slug}`, defaultTicketType(b.types)])),
+    );
+    expect(got).toEqual({
+      'food/eng': 'task',
+      'food/design': 'task',
+      'food/support': 'ticket',
+      'northwind/product': 'pitch',
+      'northwind/marketing': 'post',
+      'acme/eng': 'task',
+      'acme/qa': 'test-case',
+    });
   });
 });
