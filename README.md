@@ -34,9 +34,10 @@ pnpm dev           # builds, then serves the app on http://localhost:3000
 
 `pnpm dev` and `pnpm seed` use `.data/` in the repository, never a `pm.db` sitting
 in the repo root. The demo password is public, so only seed a machine you do not
-expose. For live reload of the client, leave `pnpm dev` running and start
-`pnpm dev:web` in a second terminal: Vite serves the client on
-http://localhost:5173 and proxies `/api` to port 3000.
+expose. If port 3000 is taken, set `PORT` to a free one (`PORT=3001 pnpm dev`); the
+server prints one line and exits when the port is in use. For live reload of the client,
+leave `pnpm dev` running and start `pnpm dev:web` in a second terminal: Vite serves the
+client on http://localhost:5173 and proxies `/api` to port 3000.
 
 Without the seed, the first start creates an admin account instead. Set
 `ADMIN_EMAIL` and `ADMIN_PASSWORD` first, or the server prints a generated password
@@ -110,6 +111,13 @@ Done depending on environment, and a release moves everything named in the
 changelog. Ticket keys are read out of branch names and commit messages. Boards
 without `has_github` are never touched by CI. On a Waterfall board a webhook obeys
 the same no-skipping rule as a person.
+
+Webhooks authenticate with a shared token, not a signature. Set `PM_TOKEN` on the
+server and send the same value in an `x-pm-token` header from your workflow (`curl -H
+"x-pm-token: $PM_TOKEN"`, see `ROLLOUT.md`). There is no HMAC and no
+`X-Hub-Signature-256` check, so they are meant to be called from your own GitHub Actions,
+not pointed at by GitHub's webhook settings page. With `PM_TOKEN` empty the endpoints
+answer 500, and a wrong or missing header is a 401.
 
 ![GitHub events on a ticket](docs/ticket-github.png)
 
@@ -218,6 +226,46 @@ v1 created: the migrator in `apps/server/src/db/` applies additive migrations an
 records them in a table of its own, so a v1 `pm.db` opens unchanged. The client
 validates every response against the same Zod schemas the server tests use, so a
 handler that drifts from the contract fails a test rather than a screen.
+
+### Creating a ticket
+
+`POST /api/tickets` needs a signed-in session: `POST /api/login` with `{ email, password }`
+sets a `pm_session` cookie, and the other calls send it back. The body is JSON and the
+reply is 201 with the ticket. A bad field is a 400 with `{ "error": "..." }`.
+
+```bash
+curl -c jar -H 'Content-Type: application/json' \
+  -d '{"email":"maya.okafor@officepm.demo","password":"demo-password"}' \
+  http://localhost:3000/api/login
+curl -b jar -H 'Content-Type: application/json' \
+  -d '{"project_slug":"food","board_slug":"eng","title":"Fix the checkout total","type":"bug"}' \
+  http://localhost:3000/api/tickets
+```
+
+| Field | Required | What |
+|---|---|---|
+| `project_slug`, `board_slug` | yes | Where the ticket goes, as named in `projects.json`. 400 for an unknown pair |
+| `title` | yes | 1 to 200 characters. Longer is a 400 |
+| `type` | yes | One of the board's `types` in `projects.json` (for example `epic`, `story`, `task`, `bug`) |
+| `status` | no | One of the board's `statuses`. Anything else, or nothing, starts in the first status |
+| `assignee`, `qa_owner` | no | A user's email |
+| `description` | no | Text |
+| `priority` | no | `urgent`, `high`, `medium` or `low` |
+| `labels` | no | Up to 8 strings, each 1 to 24 characters |
+| `due_date` | no | `YYYY-MM-DD`, a real date |
+| `sprint_id` | no | A sprint id |
+| `parent_key` | no | The key of the parent epic |
+| `blocker_reason` | no | Text |
+| `phase`, `department` | no | Pipeline tags for a ticket under an epic; see the pipeline notes below |
+| `level`, `acceptance_criteria` (array of strings), `blocked` (boolean) | no | Kept only on boards with `agile: true`; `level` defaults to `task` there |
+| `points` (integer) | no | Kept only on boards with `points: true` |
+| `appetite` | no | Kept only on Shape Up boards |
+
+The request schema is `TicketCreateRequestSchema` in `packages/shared/src/requests.ts`.
+`PATCH /api/tickets/:key` takes the same fields except the two slugs, any subset, with the
+same 200 character title limit. `GET /api/session` is what the web client asks on load:
+the signed-in user, or `null` with a 200 when nobody is signed in, so a first visit does not
+print a 401 in the browser console. `GET /api/me` is unchanged and still answers 401.
 
 ### API additions since v1
 
