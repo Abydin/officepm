@@ -60,21 +60,24 @@ function TicketTable({
   label: string;
   onOpen: (key: string) => void;
 }) {
+  // On a phone the cells lose a third of their padding and titles and statuses break anywhere, so
+  // the narrowest the table can get is the Key column plus two short columns. It then fits any
+  // font, not only the one it was measured in.
   return (
     <div className="overflow-x-auto rounded-lg border border-line bg-raised">
       <table aria-label={label} className="w-full border-collapse text-left">
         <thead>
           <tr className="border-b border-line text-xs text-dim">
-            <th scope="col" className="px-3 py-2 font-medium">
+            <th scope="col" className="px-3 py-2 font-medium max-md:px-2">
               Key
             </th>
-            <th scope="col" className="px-3 py-2 font-medium">
+            <th scope="col" className="px-3 py-2 font-medium max-md:px-2">
               Title
             </th>
             <th scope="col" className="px-3 py-2 font-medium max-md:hidden">
               Board
             </th>
-            <th scope="col" className="px-3 py-2 font-medium">
+            <th scope="col" className="px-3 py-2 font-medium max-md:px-2">
               Status
             </th>
             <th scope="col" className="px-3 py-2 font-medium max-md:hidden">
@@ -85,8 +88,8 @@ function TicketTable({
         <tbody>
           {tickets.map((t) => (
             <tr key={t.key} className="border-b border-line last:border-b-0 hover:bg-hover">
-              <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{t.key}</td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-2 font-mono text-xs whitespace-nowrap max-md:px-2">{t.key}</td>
+              <td className="px-3 py-2 max-md:px-2 max-md:[overflow-wrap:anywhere]">
                 <button
                   type="button"
                   onClick={() => onOpen(t.key)}
@@ -106,7 +109,7 @@ function TicketTable({
               <td className="px-3 py-2 whitespace-nowrap text-dim max-md:hidden">
                 {t.project_slug}/{t.board_slug}
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-2 max-md:px-2 max-md:[overflow-wrap:anywhere] max-md:[&>span]:whitespace-normal">
                 <StatusPill status={t.status} />
               </td>
               <td className="px-3 py-2 max-md:hidden">
