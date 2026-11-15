@@ -54,7 +54,7 @@ export function makeTicket(over: Partial<Ticket> = {}): Ticket {
 
 /** The routes every signed-in screen needs, to spread into a stubApi table. */
 export const signedIn = {
-  'GET /api/me': demoUser,
+  'GET /api/session': demoUser,
   'GET /api/projects': [foodProject],
   'GET /api/projects/food/boards/design': designBoard,
   'GET /api/dashboard': () => jsonResponse({}),

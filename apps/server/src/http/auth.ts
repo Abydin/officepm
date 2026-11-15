@@ -2,34 +2,42 @@ import crypto from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import type { MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
-import type { AppContext, AppEnv } from '../context.js';
+import type { AppContext, AppEnv, SessionUser } from '../context.js';
 import { schema } from '../db/index.js';
 import { HttpError } from './errors.js';
 
 export const SESSION_COOKIE = 'pm_session';
 
-export function requireAuth(ctx: AppContext): MiddlewareHandler<AppEnv> {
+/** The user a live session id belongs to, or null for an unknown or expired one. */
+export function findSessionUser(ctx: AppContext, sid: string): SessionUser | null {
   const { orm } = ctx.db;
   const { sessions, users } = schema;
+  // expires_at is an ISO string with a "T"; datetime('now') has a space. A bare
+  // string comparison accepts any session expiring earlier the same day, so both
+  // sides go through datetime() first (the 35ba092 fix, pinned by the suite).
+  const row = orm
+    .select({
+      user_id: sessions.user_id,
+      email: users.email,
+      name: users.name,
+      is_admin: users.is_admin,
+    })
+    .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.user_id))
+    .where(and(eq(sessions.id, sid), sql`datetime(${sessions.expires_at}) > datetime('now')`))
+    .get();
+  return row
+    ? { id: row.user_id, email: row.email, name: row.name, isAdmin: !!row.is_admin }
+    : null;
+}
+
+export function requireAuth(ctx: AppContext): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const sid = getCookie(c, SESSION_COOKIE);
     if (!sid) throw new HttpError(401, 'not authenticated');
-    // expires_at is an ISO string with a "T"; datetime('now') has a space. A bare
-    // string comparison accepts any session expiring earlier the same day, so both
-    // sides go through datetime() first (the 35ba092 fix, pinned by the suite).
-    const row = orm
-      .select({
-        user_id: sessions.user_id,
-        email: users.email,
-        name: users.name,
-        is_admin: users.is_admin,
-      })
-      .from(sessions)
-      .innerJoin(users, eq(users.id, sessions.user_id))
-      .where(and(eq(sessions.id, sid), sql`datetime(${sessions.expires_at}) > datetime('now')`))
-      .get();
-    if (!row) throw new HttpError(401, 'session expired');
-    c.set('user', { id: row.user_id, email: row.email, name: row.name, isAdmin: !!row.is_admin });
+    const user = findSessionUser(ctx, sid);
+    if (!user) throw new HttpError(401, 'session expired');
+    c.set('user', user);
     await next();
   };
 }

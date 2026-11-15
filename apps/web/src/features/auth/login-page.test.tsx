@@ -15,8 +15,7 @@ describe('login page', () => {
   it('has labelled fields and a submit button, and signs in', async () => {
     let signedIn = false;
     const fetchMock = stubApi({
-      'GET /api/me': () =>
-        signedIn ? jsonResponse(demoUser) : jsonResponse({ error: 'sign in required' }, 401),
+      'GET /api/session': () => (signedIn ? jsonResponse(demoUser) : jsonResponse(null)),
       'POST /api/login': () => {
         signedIn = true;
         return jsonResponse(demoUser);
@@ -41,7 +40,7 @@ describe('login page', () => {
 
   it("shows the server's message when the credentials are wrong, and stays on the form", async () => {
     stubApi({
-      'GET /api/me': jsonResponse({ error: 'sign in required' }, 401),
+      'GET /api/session': jsonResponse(null),
       'POST /api/login': jsonResponse({ error: 'invalid email or password' }, 401),
     });
     const user = userEvent.setup();
@@ -59,7 +58,7 @@ describe('login page', () => {
   it('disables the button while the request is in flight', async () => {
     let release: (r: Response) => void = () => {};
     stubApi({
-      'GET /api/me': jsonResponse({ error: 'sign in required' }, 401),
+      'GET /api/session': jsonResponse(null),
       'POST /api/login': () => new Promise<Response>((resolve) => (release = resolve)),
     });
     const user = userEvent.setup();
@@ -76,7 +75,7 @@ describe('login page', () => {
 
   it('reports a network failure in plain words', async () => {
     stubApi({
-      'GET /api/me': jsonResponse({ error: 'sign in required' }, 401),
+      'GET /api/session': jsonResponse(null),
       'POST /api/login': () => {
         throw new TypeError('Failed to fetch');
       },

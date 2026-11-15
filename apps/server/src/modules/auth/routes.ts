@@ -3,7 +3,7 @@ import { Hono, type Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import type { Ok } from '@officepm/shared';
 import type { AppContext, AppEnv } from '../../context.js';
-import { requireAuth, SESSION_COOKIE } from '../../http/auth.js';
+import { findSessionUser, requireAuth, SESSION_COOKIE } from '../../http/auth.js';
 import { createAuthService, TooManyAttempts } from './service.js';
 
 /** The client address the throttle keys on. X-Forwarded-For counts only behind a trusted proxy. */
@@ -54,6 +54,13 @@ export function authRoutes(ctx: AppContext) {
   });
 
   router.get('/me', requireAuth(ctx), (c) => c.json(c.get('user')));
+
+  // The page's first question on load. Signed out is a normal answer to it, so it is a
+  // 200 with null here, where /me stays a 401 and the browser console stays quiet.
+  router.get('/session', (c) => {
+    const sid = getCookie(c, SESSION_COOKIE);
+    return c.json(sid ? findSessionUser(ctx, sid) : null);
+  });
 
   return router;
 }

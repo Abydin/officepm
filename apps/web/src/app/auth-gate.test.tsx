@@ -4,16 +4,18 @@ import { describe, expect, it } from 'vitest';
 import { demoUser, jsonResponse, renderApp, stubApi } from '@/test/helpers';
 
 const unauthenticated = () => jsonResponse({ error: 'sign in required' }, 401);
+// What the session probe answers when nobody is signed in: 200 and null, not a 401.
+const signedOut = () => jsonResponse(null);
 
 describe('auth gate', () => {
   it('shows a loading state while the session is being checked', async () => {
-    stubApi({ 'GET /api/me': () => new Promise<Response>(() => {}) });
+    stubApi({ 'GET /api/session': () => new Promise<Response>(() => {}) });
     renderApp('/projects');
     expect(await screen.findByRole('status')).toHaveTextContent('Loading OfficePM');
   });
 
   it('sends an anonymous visitor to the login page', async () => {
-    stubApi({ 'GET /api/me': unauthenticated });
+    stubApi({ 'GET /api/session': signedOut });
     const { router } = renderApp('/projects');
 
     expect(await screen.findByLabelText('Email')).toBeInTheDocument();
@@ -24,7 +26,7 @@ describe('auth gate', () => {
   it('returns the person to the page they were headed for after signing in', async () => {
     let signedIn = false;
     stubApi({
-      'GET /api/me': () => (signedIn ? jsonResponse(demoUser) : unauthenticated()),
+      'GET /api/session': () => (signedIn ? jsonResponse(demoUser) : signedOut()),
       'POST /api/login': () => {
         signedIn = true;
         return jsonResponse(demoUser);
@@ -44,7 +46,7 @@ describe('auth gate', () => {
 
   it('renders the page for a signed-in user and redirects /login away', async () => {
     stubApi({
-      'GET /api/me': jsonResponse(demoUser),
+      'GET /api/session': jsonResponse(demoUser),
       'GET /api/projects': [],
     });
     const { router } = renderApp('/login');
@@ -56,7 +58,7 @@ describe('auth gate', () => {
   it('says so, and offers a retry, when the session check itself fails', async () => {
     let calls = 0;
     stubApi({
-      'GET /api/me': () => {
+      'GET /api/session': () => {
         calls += 1;
         return calls === 1 ? jsonResponse({ error: 'boom' }, 500) : jsonResponse(demoUser);
       },
@@ -73,7 +75,7 @@ describe('auth gate', () => {
 
   it('drops the session and shows the login page when any request answers 401', async () => {
     stubApi({
-      'GET /api/me': jsonResponse(demoUser),
+      'GET /api/session': jsonResponse(demoUser),
       'GET /api/projects': unauthenticated,
     });
     const { router } = renderApp('/projects');

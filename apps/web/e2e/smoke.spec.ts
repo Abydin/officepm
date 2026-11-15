@@ -20,3 +20,25 @@ test('signs in against the seeded server and shows the overview', async ({ page 
     page.getByRole('navigation', { name: 'Projects and boards' }).getByText('Food'),
   ).toBeVisible();
 });
+
+test('a first visit leaves the browser console clean: no 401 for the session probe', async ({
+  page,
+}) => {
+  const problems: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') problems.push(msg.text());
+  });
+  page.on('pageerror', (error) => problems.push(error.message));
+  const failed: string[] = [];
+  page.on('response', (res) => {
+    if (res.status() >= 400) failed.push(`${res.status()} ${new URL(res.url()).pathname}`);
+  });
+
+  await page.goto('/');
+  await expect(page).toHaveURL(/#\/login$/);
+  await expect(page.getByLabel('Email')).toBeVisible();
+  await page.waitForLoadState('networkidle');
+
+  expect(failed).toEqual([]);
+  expect(problems).toEqual([]);
+});

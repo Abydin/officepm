@@ -1,15 +1,14 @@
 import { OkSchema, UserSchema, type LoginInput, type User } from '@officepm/shared';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, isApiError, qk } from '@/lib/api';
+import { api, qk } from '@/lib/api';
 
-/** `null` means signed out. A 401 on /api/me is the normal anonymous answer, not a failure. */
-export async function fetchSession(signal?: AbortSignal): Promise<User | null> {
-  try {
-    return await api.get('/api/me', UserSchema, { signal });
-  } catch (error) {
-    if (isApiError(error) && error.isUnauthorized) return null;
-    throw error;
-  }
+/**
+ * `null` means signed out. This asks /api/session, which answers 200 with null for
+ * nobody, because a 401 from /api/me prints a red error in the browser console on
+ * every first visit even though it is the normal anonymous answer.
+ */
+export function fetchSession(signal?: AbortSignal): Promise<User | null> {
+  return api.get('/api/session', UserSchema.nullable(), { signal });
 }
 
 export const sessionQuery = queryOptions({

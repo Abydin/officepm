@@ -177,6 +177,28 @@ describe('API contract (shared Zod schemas)', () => {
     );
   });
 
+  it('answers the signed-out session probe with 200 and null, and still 401s /api/me', async () => {
+    const saved = cookie;
+    try {
+      expect(UserSchema.parse((await call('GET', '/api/session')).json).email).toBe(
+        'admin@officepm.local',
+      );
+      cookie = '';
+      const probe = await call('GET', '/api/session');
+      expect(probe.status).toBe(200);
+      expect(probe.json).toBeNull();
+      cookie = 'pm_session=not-a-real-session';
+      const stale = await call('GET', '/api/session');
+      expect(stale.status).toBe(200);
+      expect(stale.json).toBeNull();
+      // The probe is the only anonymous 200: everything else, /api/me included, still says 401.
+      expect((await call('GET', '/api/me')).status).toBe(401);
+      expect((await call('GET', '/api/tickets')).status).toBe(401);
+    } finally {
+      cookie = saved;
+    }
+  });
+
   it('refuses a ticket title over the cap with a 400, on create and on patch', async () => {
     const base = { project_slug: 'food', board_slug: 'eng', type: 'task' };
     const tooLong = 'x'.repeat(MAX_TITLE_LENGTH + 1);

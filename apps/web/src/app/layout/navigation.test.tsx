@@ -42,7 +42,7 @@ describe('sidebar', () => {
   });
 
   it('hides Admin from everyone else', async () => {
-    stubApi(base({ 'GET /api/me': { ...demoUser, isAdmin: false } }));
+    stubApi(base({ 'GET /api/session': { ...demoUser, isAdmin: false } }));
     renderApp('/overview');
     const nav = within(await screen.findByRole('navigation', { name: 'Projects and boards' }));
     await nav.findByRole('link', { name: 'Docs & Files' });

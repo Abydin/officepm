@@ -235,7 +235,7 @@ describe('admin page', () => {
   it('does not show the admin page to someone who is not an admin, or ask for its data', async () => {
     const fetchMock = stubApi({
       ...routes(),
-      'GET /api/me': { ...demoUser, isAdmin: false },
+      'GET /api/session': { ...demoUser, isAdmin: false },
     });
     renderApp('/admin');
 
