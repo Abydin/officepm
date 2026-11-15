@@ -176,6 +176,24 @@ describe('sub-tickets', () => {
     expect(child.parent_key).toBeNull();
   });
 
+  it("puts a new sub-ticket in its parent's sprint, and in none when the parent has none", async () => {
+    const sprint = (
+      await admin.call('POST', '/api/projects/food/boards/eng/sprints', {
+        name: 'Sprint 1',
+        start_date: '2026-10-01',
+        end_date: '2026-10-15',
+      })
+    ).json as { id: string };
+    const parent = await newTicket({ sprint_id: sprint.id });
+    const inSprint = await sub(parent.key, { title: 'Wire it' });
+    expect(inSprint.status).toBe(201);
+    expect(inSprint.json.sprint_id).toBe(sprint.id);
+
+    const loose = await newTicket();
+    const none = await sub(loose.key, { title: 'Loose one' });
+    expect(none.json.sprint_id).toBeNull();
+  });
+
   it('announces the new sub-ticket as ticket.created', async () => {
     const parent = await newTicket();
     events.length = 0;

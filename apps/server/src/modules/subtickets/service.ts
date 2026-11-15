@@ -79,6 +79,8 @@ export function createSubticketService(ctx: AppContext, ticketService: TicketSer
           title: b.title.trim(),
           type,
           ...(b.assignee ? { assignee: b.assignee } : {}),
+          // It is part of the same piece of work, so it lands in the same sprint.
+          ...(parent.sprint_id ? { sprint_id: parent.sprint_id } : {}),
         },
         parent.key,
       );
