@@ -6,6 +6,7 @@ import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { openDatabase } from './db/index.js';
 import { EventBus } from './events.js';
+import { listenErrorMessage } from './listen-error.js';
 import { ProjectsConfigError, ProjectsRegistry, readProjectsConfig } from './projects-config.js';
 
 /** Starts the server. Exits with status 1 and a named reason on a bad projects.json. */
@@ -49,10 +50,17 @@ async function main(): Promise<void> {
   ctx.events.startHeartbeat();
 
   const app = createApp(ctx);
-  serve({ fetch: app.fetch, port: Number(config.port) }, () => {
+  const port = Number(config.port);
+  const server = serve({ fetch: app.fetch, port }, () => {
     console.log(
       '[OfficePM] listening on http://localhost:' + config.port + ' (env=' + config.nodeEnv + ')',
     );
+  });
+  server.on('error', (err) => {
+    const friendly = listenErrorMessage(err, port);
+    if (!friendly) throw err;
+    console.error(friendly);
+    process.exit(1);
   });
 }
 
