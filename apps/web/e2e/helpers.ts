@@ -66,3 +66,15 @@ export async function removeTickets(page: Page, keys: string[]) {
     .map((t) => t.key);
   for (const key of doomed) await page.request.delete(`/api/tickets/${key}`);
 }
+
+/**
+ * Opens a sidebar property that is empty, and so hidden: "+ Add property", then the property by
+ * name. Does nothing if `control` is already on the page, so a test works on a ticket that has
+ * the value and on one that does not.
+ */
+export async function showProperty(page: Page, drawer: Locator, name: string, control: Locator) {
+  if ((await control.count()) > 0) return;
+  await drawer.getByRole('button', { name: 'Add property' }).click();
+  await page.getByRole('option', { name, exact: true }).click();
+  await expect(control).toBeVisible();
+}

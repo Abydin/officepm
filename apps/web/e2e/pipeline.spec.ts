@@ -41,8 +41,9 @@ async function newFeature(page: Page, title: string) {
 }
 
 const moveDialog = (page: Page, key: string) => page.getByRole('dialog', { name: `Move ${key}` });
+// Every move is a handoff comment, so the feature's history is its Activity.
 const history = (page: Page) =>
-  page.getByRole('dialog').first().getByRole('list', { name: 'Pipeline history' });
+  page.getByRole('dialog', { name: /^Ticket / }).getByRole('list', { name: 'Activity' });
 
 async function openFeature(page: Page, key: string) {
   await page.goto(`/#/projects/food/boards/eng/epics?t=${key}`);
@@ -208,15 +209,15 @@ test.describe('the feature pipeline scenario', () => {
     // The history shows it all, oldest first.
     const moves = history(page).getByRole('listitem');
     await expect(moves).toHaveCount(6);
-    await expect(moves.nth(0)).toContainText('Moved from Product to Design');
+    await expect(moves.nth(0)).toContainText('Moved from Product to Design.');
     await expect(moves.nth(0)).toContainText('The brief is in the project docs.');
-    await expect(moves.nth(1)).toContainText('Sent back from Design to Product');
+    await expect(moves.nth(1)).toContainText('Sent back from Design to Product.');
     await expect(moves.nth(1)).toContainText('Reason: The scope is unclear.');
-    await expect(moves.nth(2)).toContainText('Moved from Product to Design');
-    await expect(moves.nth(3)).toContainText('Moved from Design to Engineering');
-    await expect(moves.nth(4)).toContainText('Moved from Engineering to QA');
-    await expect(moves.nth(5)).toContainText('Moved from QA to DevOps');
-    await expect(moves.nth(5)).toContainText('to Tunde Bakare');
+    await expect(moves.nth(2)).toContainText('Moved from Product to Design.');
+    await expect(moves.nth(3)).toContainText('Moved from Design to Engineering.');
+    await expect(moves.nth(4)).toContainText('Moved from Engineering to QA.');
+    await expect(moves.nth(5)).toContainText('Moved from QA to DevOps.');
+    await expect(moves.nth(5)).toContainText('To: Tunde Bakare');
     await expect(moves.nth(5)).toContainText('QA passed. Ready to ship.');
 
     // A ticket under the feature shows its own phase and lane, and keeps its own state.

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './helpers';
+import { showProperty, signIn } from './helpers';
 
 test.beforeEach(async ({ page }) => {
   await signIn(page);
@@ -13,7 +13,10 @@ test('edits a ticket in the drawer and the edits survive a reload', async ({ pag
 
   await drawer.getByLabel('Title', { exact: true }).fill('Empty state illustrations, v2');
   await drawer.getByLabel('Title', { exact: true }).blur();
+  // Empty properties are not on screen until "+ Add property" opens them.
+  await showProperty(page, drawer, 'Priority', drawer.getByLabel('Priority'));
   await drawer.getByLabel('Priority').selectOption('urgent');
+  await showProperty(page, drawer, 'Due date', drawer.getByLabel('Due date'));
   await drawer.getByLabel('Due date').fill('2030-05-17');
   await drawer.getByLabel('Due date').blur();
 
@@ -21,6 +24,7 @@ test('edits a ticket in the drawer and the edits survive a reload', async ({ pag
   await page.getByRole('combobox', { name: /Find a person/ }).fill('priya');
   await page.getByRole('option', { name: /Priya/ }).click();
 
+  await showProperty(page, drawer, 'Labels', drawer.getByRole('button', { name: 'Add label' }));
   await drawer.getByRole('button', { name: 'Add label' }).click();
   await page.getByRole('combobox', { name: /Find a label/ }).fill('print');
   await page.getByRole('option', { name: /Use "print"/ }).click();

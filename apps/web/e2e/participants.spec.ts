@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { card, removeTickets, signIn } from './helpers';
+import { card, removeTickets, showProperty, signIn } from './helpers';
 
 const TUNDE = { email: 'tunde.bakare@officepm.demo', password: 'demo-password' };
 const SAM = { email: 'sam.adeyemi@officepm.demo', password: 'demo-password' };
@@ -25,9 +25,21 @@ async function asPerson(browser: Browser, who: { email: string; password: string
   return { page, context };
 }
 
+const drawerOf = (page: Page) => page.getByRole('dialog', { name: /^Ticket / });
+// The add form lives in a popover on the People row.
+const addForm = (page: Page) => page.getByRole('group', { name: 'Add a person to this ticket' });
+
+async function openAddForm(page: Page) {
+  const drawer = drawerOf(page);
+  await showProperty(page, drawer, 'People', drawer.getByRole('button', { name: 'Add a person' }));
+  await drawer.getByRole('button', { name: 'Add a person' }).click();
+  await expect(addForm(page)).toBeVisible();
+}
+
 async function choosePerson(page: Page, name: string) {
-  const drawer = page.getByRole('dialog');
-  await drawer.getByRole('button', { name: /^Person to add/ }).click();
+  await addForm(page)
+    .getByRole('button', { name: /^Person to add/ })
+    .click();
   await page.getByRole('option', { name: new RegExp(name) }).click();
 }
 
@@ -44,21 +56,23 @@ test('adds a person with a role in the drawer, sees them on the card, then remov
 }) => {
   const key = await newTicket(page, 'People: add and remove');
   await page.goto(`/#/projects/food/boards/design?t=${key}`);
-  const drawer = page.getByRole('dialog');
-  const people = drawer.getByRole('region', { name: 'People' });
-  await expect(people.getByText(/No one else is on this ticket/)).toBeVisible();
+  const drawer = drawerOf(page);
+  // Nobody is on it yet, so the People row is not shown until it is asked for.
+  await expect(drawer.getByRole('list', { name: 'People on this ticket' })).toHaveCount(0);
 
+  await openAddForm(page);
   await choosePerson(page, 'Tunde Bakare');
-  await people.getByRole('textbox', { name: /Role/ }).fill('Frontend');
-  await people.getByRole('button', { name: 'Add person' }).click();
-  const list = people.getByRole('list', { name: 'People on this ticket' });
+  await addForm(page).getByRole('textbox', { name: /Role/ }).fill('Frontend');
+  await addForm(page).getByRole('button', { name: 'Add person' }).click();
+  const list = drawer.getByRole('list', { name: 'People on this ticket' });
   await expect(list).toContainText('Tunde Bakare');
   await expect(list).toContainText('Frontend');
   // The page the browser received has no email for them.
   await expect(list).not.toContainText('@');
 
+  await openAddForm(page);
   await choosePerson(page, 'Sam Adeyemi');
-  await people.getByRole('button', { name: 'Add person' }).click();
+  await addForm(page).getByRole('button', { name: 'Add person' }).click();
   await expect(list.getByRole('listitem')).toHaveCount(2);
 
   await drawer.getByRole('button', { name: 'Close ticket' }).click();
@@ -76,7 +90,8 @@ test('adds a person with a role in the drawer, sees them on the card, then remov
 test('a role over 30 characters cannot be typed and the API refuses one too', async ({ page }) => {
   const key = await newTicket(page, 'People: role limit');
   await page.goto(`/#/projects/food/boards/design?t=${key}`);
-  const role = page.getByRole('dialog').getByRole('textbox', { name: /Role/ });
+  await openAddForm(page);
+  const role = addForm(page).getByRole('textbox', { name: /Role/ });
   await role.fill('x'.repeat(45));
   await expect(role).toHaveValue('x'.repeat(30));
 
@@ -109,9 +124,9 @@ test('one handoff nudges two people: each sees it unread, and the second is a pa
   await expect(
     page.getByRole('dialog').getByRole('button', { name: /^Assignee: Sam Adeyemi/ }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('dialog').getByRole('list', { name: 'People on this ticket' }),
-  ).toContainText('Tunde Bakare');
+  await expect(drawerOf(page).getByRole('list', { name: 'People on this ticket' })).toContainText(
+    'Tunde Bakare',
+  );
 
   for (const who of [SAM, TUNDE]) {
     const person = await asPerson(browser, who);
@@ -134,13 +149,19 @@ test('one handoff nudges two people: each sees it unread, and the second is a pa
   }
 });
 
-test('the People section fits a phone without sideways scrolling', async ({ page }) => {
+test('the People row and its form fit a phone without sideways scrolling', async ({ page }) => {
   const key = await newTicket(page, 'People: phone');
   await page.setViewportSize({ width: 390, height: 800 });
   await page.goto(`/#/projects/food/boards/design?t=${key}`);
-  const people = page.getByRole('dialog').getByRole('region', { name: 'People' });
+  const people = drawerOf(page).getByRole('group', { name: 'People' });
+  await openAddForm(page);
+  const form = addForm(page);
+  await expect(form.getByRole('button', { name: 'Add person' })).toBeInViewport();
+  const formBox = await form.boundingBox();
+  expect(formBox!.x).toBeGreaterThanOrEqual(0);
+  expect(formBox!.x + formBox!.width).toBeLessThanOrEqual(390);
+  await page.keyboard.press('Escape');
   await people.scrollIntoViewIfNeeded();
-  await expect(people.getByRole('button', { name: 'Add person' })).toBeInViewport();
   // The drawer is the thing that must not scroll sideways (the board behind it may).
   const overflow = await page.getByRole('dialog').evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);

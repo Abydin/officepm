@@ -205,15 +205,21 @@ for (const theme of ['dark', 'light'] as const) {
         });
       }
       await page.goto(`/#/projects/food/boards/design?t=${key}`);
-      const drawer = page.getByRole('dialog');
+      // By name: an open picker is a dialog too.
+      const drawer = page.getByRole('dialog', { name: /^Ticket / });
       await expect(drawer.getByRole('list', { name: 'People on this ticket' })).toBeVisible();
       expect(await violations(page)).toEqual([]);
 
-      // The picker open inside the drawer, then the board behind it with the avatar stack.
-      await drawer.getByRole('button', { name: /^Person to add/ }).click();
+      // The add form open in its popover, then its picker, then the board behind with the avatar stack.
+      await drawer.getByRole('button', { name: 'Add a person' }).click();
+      await expect(page.getByRole('group', { name: 'Add a person to this ticket' })).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+      await page.getByRole('button', { name: /^Person to add/ }).click();
       await expect(page.getByRole('combobox', { name: 'Find a person' })).toBeVisible();
       expect(await violations(page)).toEqual([]);
       await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('group', { name: 'Add a person to this ticket' })).toHaveCount(0);
       await drawer.getByRole('button', { name: 'Close ticket' }).click();
       await expect(
         page.locator(`[data-ticket-key="${key}"]`).getByTestId('participants'),
