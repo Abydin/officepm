@@ -8,19 +8,10 @@ import { useAssignTicket } from '@/features/tickets/api';
 import { useTicketDrawer } from '@/features/tickets/use-ticket-drawer';
 import { qk } from '@/lib/api';
 import { useBoardSelection } from './board-selection';
+import { isTyping } from './is-typing';
 
 /** How long after G a second key still counts as a chord. */
 const CHORD_MS = 900;
-
-function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    target.tagName === 'INPUT' ||
-    target.tagName === 'TEXTAREA' ||
-    target.tagName === 'SELECT'
-  );
-}
 
 interface ShortcutActions {
   openPalette: (page?: 'root' | 'create') => void;

@@ -13,13 +13,16 @@ interface DrawerState {
  * a ticket can be linked to and survives a reload while the page behind it stays
  * mounted. (`#/t/KEY` is the short form: it redirects to the ticket's board.)
  * Opening pushes a history entry, so Back closes the drawer; opening another
- * ticket while one is open replaces it instead of stacking.
+ * ticket while one is open replaces it instead of stacking. `&full=1` shows the
+ * same ticket as a full page; toggling it replaces the entry, so Back still closes.
  */
 export function useTicketDrawer() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = (location.state ?? {}) as DrawerState;
-  const openKey = new URLSearchParams(location.search).get('t');
+  const params = new URLSearchParams(location.search);
+  const openKey = params.get('t');
+  const full = openKey !== null && params.get('full') === '1';
 
   const open = useCallback(
     (key: string, options: { focusTitle?: boolean } = {}) => {
@@ -47,8 +50,19 @@ export function useTicketDrawer() {
     }
     const search = new URLSearchParams(location.search);
     search.delete('t');
+    search.delete('full');
     void navigate({ search: search.toString() }, { replace: true });
   }, [location.search, navigate, state.drawer]);
 
-  return { openKey, focusTitle: state.focusTitle === true, open, close };
+  const setFull = useCallback(
+    (next: boolean) => {
+      const search = new URLSearchParams(location.search);
+      if (next) search.set('full', '1');
+      else search.delete('full');
+      void navigate({ search: search.toString() }, { replace: true, state: location.state });
+    },
+    [location.search, location.state, navigate],
+  );
+
+  return { openKey, full, setFull, focusTitle: state.focusTitle === true, open, close };
 }

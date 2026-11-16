@@ -27,6 +27,11 @@ interface ComboboxProps {
   disabled?: boolean;
   triggerClassName?: string;
   id?: string;
+  /** Lets a parent open the picker (a keyboard shortcut). Leave both out and it manages itself. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Called as the picker closes; preventDefault keeps focus from going back to the trigger. */
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 const item =
@@ -50,8 +55,16 @@ export function Combobox({
   disabled,
   triggerClassName,
   id,
+  open: controlledOpen,
+  onOpenChange,
+  onCloseAutoFocus,
 }: ComboboxProps) {
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = controlledOpen ?? ownOpen;
+  const setOpen = (next: boolean) => {
+    setOwnOpen(next);
+    onOpenChange?.(next);
+  };
   const [search, setSearch] = useState('');
   const custom = parseCustom?.(search) ?? null;
   const showCustom = custom !== null && !options.some((o) => o.value === custom.value);
@@ -85,6 +98,7 @@ export function Combobox({
         <Popover.Content
           align="start"
           sideOffset={4}
+          onCloseAutoFocus={onCloseAutoFocus}
           className="z-[60] w-[min(300px,calc(100vw-32px))] animate-pop rounded-lg border border-line-strong bg-raised p-1.5 shadow-pop"
         >
           <Command label={searchLabel}>

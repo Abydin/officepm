@@ -12,11 +12,14 @@ const ROWS: Array<[keys: string, does: string]> = [
   ['Enter', 'Open the highlighted ticket'],
   ['E', 'Open the highlighted ticket with the title selected'],
   ['A', 'Assign the highlighted or open ticket to me'],
+  ['F', 'In an open ticket: switch between the side panel and the full page'],
+  ['P', 'In an open ticket: add a property'],
+  ['R', 'In an open ticket: reply, with the caret in the comment box'],
   ['Drag a card', 'Move it to another column'],
   ['Space, then Left / Right, then Space', 'Move a focused card with the keyboard'],
   ['Alt + Left / Right', 'Move a focused card one column'],
   ['?', 'Show this help'],
-  ['Esc', 'Close the drawer or dialog'],
+  ['Esc', 'Close the open picker first, then the drawer or dialog'],
 ];
 
 export function ShortcutsHelp({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {

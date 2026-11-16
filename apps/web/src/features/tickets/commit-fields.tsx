@@ -2,20 +2,44 @@ import { useId, type ReactNode } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
-/** A label above a control. The render prop receives the id to put on the control. */
+/**
+ * Controls that read as plain text until you point at them: no border or fill at rest, a border on hover,
+ * the usual focus ring on focus. The sidebar's property rows use them, so an empty ticket is not a wall of boxes.
+ */
+export const frameless = 'border-transparent bg-transparent hover:not-disabled:border-line-strong';
+
+/**
+ * A label for a control. The render prop receives the id to put on the control. It stacks the
+ * label above the control; `row` puts it beside it, for the property sidebar; `hideLabel`
+ * keeps the label for screen readers only.
+ */
 export function Field({
   label,
   wide,
+  row,
+  hideLabel,
+  prop,
   children,
 }: {
   label: string;
   wide?: boolean;
+  row?: boolean;
+  hideLabel?: boolean;
+  /** Marks a sidebar row, so "+ Add property" can move focus into the row it just revealed. */
+  prop?: string;
   children: (id: string) => ReactNode;
 }) {
   const id = useId();
   return (
-    <div className={cn('flex min-w-0 flex-col gap-1', wide && 'col-span-2')}>
-      <label htmlFor={id} className="text-xs text-dim">
+    <div
+      data-prop={prop}
+      className={cn(
+        'min-w-0',
+        row ? 'grid grid-cols-[84px_minmax(0,1fr)] items-center gap-2' : 'flex flex-col gap-1',
+        wide && 'col-span-2',
+      )}
+    >
+      <label htmlFor={id} className={cn('text-xs text-dim', hideLabel && 'sr-only')}>
         {label}
       </label>
       {children(id)}
@@ -23,11 +47,22 @@ export function Field({
   );
 }
 
-export function SectionTitle({ children, id }: { children: ReactNode; id?: string }) {
+export function SectionTitle({
+  children,
+  id,
+  className,
+}: {
+  children: ReactNode;
+  id?: string;
+  className?: string;
+}) {
   return (
     <h3
       id={id}
-      className="mt-0 mb-2 text-[11px] font-semibold tracking-[0.07em] text-dim uppercase"
+      className={cn(
+        'mt-0 mb-2 text-[11px] font-semibold tracking-[0.07em] text-dim uppercase',
+        className,
+      )}
     >
       {children}
     </h3>

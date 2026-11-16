@@ -29,18 +29,26 @@ export function SheetContent({
   );
 }
 
-/** A full-height panel from the right edge, over the whole page, for the ticket drawer. */
+/**
+ * A full-height panel from the right edge, over the whole page, for the ticket drawer. `full`
+ * stretches the same dialog over the whole window. It is a size container, so what is inside
+ * can switch to two columns by the panel's own width rather than the window's.
+ */
 export function DrawerContent({
   className,
   children,
+  full = false,
   ...props
-}: ComponentProps<typeof DialogPrimitive.Content>) {
+}: ComponentProps<typeof DialogPrimitive.Content> & { full?: boolean }) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-40 animate-fade bg-black/45" />
       <DialogPrimitive.Content
         className={cn(
-          'fixed inset-y-0 right-0 z-50 flex w-[min(560px,100vw)] animate-slide-right flex-col border-l border-line bg-raised shadow-pop focus:outline-none',
+          '@container fixed z-50 flex flex-col bg-raised shadow-pop focus:outline-none',
+          full
+            ? 'inset-0 animate-fade'
+            : 'inset-y-0 right-0 w-[min(760px,100vw)] animate-slide-right border-l border-line',
           className,
         )}
         {...props}
