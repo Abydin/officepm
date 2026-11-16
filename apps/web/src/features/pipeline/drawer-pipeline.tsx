@@ -6,20 +6,20 @@ import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HandoffDialog } from '@/features/handoffs/handoff-dialog';
-import { CommitInput, Field, SectionTitle } from '@/features/tickets/commit-fields';
-import { ticketQuery, useUpdateTicket } from '@/features/tickets/api';
+import { CommitInput, Field, frameless, SectionTitle } from '@/features/tickets/commit-fields';
+import { ticketQuery } from '@/features/tickets/api';
 import { errorMessage } from '@/lib/api';
 import { epicPipelineQuery, projectPipelineQuery, useStartPipeline } from './api';
-import { PhaseHistory } from './phase-history';
 import { PipelineStepper } from './pipeline-stepper';
 
 export const isEpic = (ticket: Pick<Ticket, 'level' | 'type'>) =>
   ticket.level === 'epic' || ticket.type === 'epic';
 
 /**
- * An epic's pipeline in its drawer: the stepper, a button that opens the handoff dialog (which moves
- * a feature between phases) and the history of every move. An epic that has not started a pipeline
- * shows one line and a button to start it.
+ * An epic's pipeline in its drawer: the stepper and a button that opens the handoff dialog (which
+ * moves a feature between phases). Every move is also a handoff comment, so the history is in the
+ * ticket's Activity and is not repeated here. An epic that has not started a pipeline shows one
+ * line and a button to start it.
  */
 export function FeaturePipelineSection({ ticket, board }: { ticket: Ticket; board: Board }) {
   const titleId = useId();
@@ -51,7 +51,6 @@ export function FeaturePipelineSection({ ticket, board }: { ticket: Ticket; boar
             </Button>
             {data.completed && <span className="text-ok">Complete</span>}
           </div>
-          <PhaseHistory moves={data.history} />
         </div>
       )}
       {moving && (
@@ -66,63 +65,68 @@ export function FeaturePipelineSection({ ticket, board }: { ticket: Ticket; boar
 }
 
 /**
- * The phase and department a ticket under a feature is tagged with. It appears only when the ticket's
- * feature is on a pipeline or the ticket already carries a tag, so a project that never uses
- * pipelines sees nothing.
+ * Whether the phase and team lane apply to a ticket: its feature is on a pipeline, or it already
+ * carries a tag. A project that never uses pipelines sees nothing.
  */
-export function PipelineTagsSection({ ticket }: { ticket: Ticket }) {
-  const titleId = useId();
+export function usePipelineTagsApply(ticket: Ticket): boolean {
   const parent = useQuery({
     ...ticketQuery(ticket.parent_key ?? ''),
     enabled: !!ticket.parent_key,
   });
-  const phases = useQuery(projectPipelineQuery(ticket.project_slug));
-  const update = useUpdateTicket(ticket.key);
-  const [version, setVersion] = useState(0);
-  const save = (patch: { phase?: string | null; department?: string | null }) =>
-    update.mutate(patch, { onError: () => setVersion((v) => v + 1) });
-
   const tagged = Boolean(ticket.phase || ticket.department);
-  if (!ticket.parent_key || (!tagged && !parent.data?.phase)) return null;
-  const names = phases.data?.phases.map((p) => p.name) ?? [];
+  return !isEpic(ticket) && Boolean(ticket.parent_key) && (tagged || Boolean(parent.data?.phase));
+}
 
+interface TagFieldProps {
+  ticket: Ticket;
+  save: (patch: { phase?: string | null; department?: string | null }) => void;
+  /** A key that changes when the saved value does, or when a save is refused, so the field is rebuilt. */
+  keyed: (name: string, value: string) => string;
+}
+
+/** The ticket's own pipeline phase, as a sidebar row. */
+export function PhaseField({ ticket, save }: Omit<TagFieldProps, 'keyed'>) {
+  const phases = useQuery(projectPipelineQuery(ticket.project_slug));
+  const names = phases.data?.phases.map((p) => p.name) ?? [];
   return (
-    <section aria-labelledby={titleId}>
-      <SectionTitle id={titleId}>Feature pipeline</SectionTitle>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Phase">
-          {(id) => (
-            <Select
-              id={id}
-              value={ticket.phase ?? ''}
-              onChange={(e) => save({ phase: e.target.value || null })}
-            >
-              <option value="">None</option>
-              {ticket.phase && !names.includes(ticket.phase) && (
-                <option value={ticket.phase}>{ticket.phase}</option>
-              )}
-              {names.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </Select>
+    <Field row prop="phase" label="Phase">
+      {(id) => (
+        <Select
+          id={id}
+          className={frameless}
+          value={ticket.phase ?? ''}
+          onChange={(e) => save({ phase: e.target.value || null })}
+        >
+          <option value="">None</option>
+          {ticket.phase && !names.includes(ticket.phase) && (
+            <option value={ticket.phase}>{ticket.phase}</option>
           )}
-        </Field>
-        <Field label="Team lane">
-          {(id) => (
-            <CommitInput
-              key={`${version}:${ticket.department ?? ''}`}
-              id={id}
-              maxLength={40}
-              placeholder="Backend, Frontend..."
-              value={ticket.department ?? ''}
-              onCommit={(value) => save({ department: value.trim() || null })}
-            />
-          )}
-        </Field>
-      </div>
-      {update.isError && <ErrorAlert className="mt-2">{errorMessage(update.error)}</ErrorAlert>}
-    </section>
+          {names.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Field>
+  );
+}
+
+/** The team lane (department) the ticket is tagged with, as a sidebar row. */
+export function TeamLaneField({ ticket, save, keyed }: TagFieldProps) {
+  return (
+    <Field row prop="team_lane" label="Team lane">
+      {(id) => (
+        <CommitInput
+          key={keyed('lane', ticket.department ?? '')}
+          id={id}
+          className={frameless}
+          maxLength={40}
+          placeholder="Backend, Frontend..."
+          value={ticket.department ?? ''}
+          onCommit={(value) => save({ department: value.trim() || null })}
+        />
+      )}
+    </Field>
   );
 }

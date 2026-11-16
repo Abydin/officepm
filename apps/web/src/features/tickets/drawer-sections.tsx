@@ -1,6 +1,6 @@
 import type { Ticket } from '@officepm/shared';
 import { useQuery } from '@tanstack/react-query';
-import { ExternalLink, Paperclip, X } from 'lucide-react';
+import { ExternalLink, Plus, X } from 'lucide-react';
 import { useRef, useState, type FormEvent } from 'react';
 import { Avatar } from '@/components/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -51,18 +51,17 @@ export function DodSection({ ticketKey }: { ticketKey: string }) {
   );
 }
 
-export function GithubSection({ ticketKey }: { ticketKey: string }) {
+/** The ticket's PR, deploy and release events, for the sidebar. It shows only when there are some. */
+export function GithubGroup({ ticketKey }: { ticketKey: string }) {
   const events = useQuery(githubQuery(ticketKey));
+  if (events.isError) return <ErrorAlert>{errorMessage(events.error)}</ErrorAlert>;
+  if (!events.data || events.data.length === 0) return null;
   return (
     <section aria-labelledby="gh-title">
       <SectionTitle id="gh-title">GitHub</SectionTitle>
-      {events.isError && <ErrorAlert>{errorMessage(events.error)}</ErrorAlert>}
-      {events.data?.length === 0 && (
-        <p className="m-0 text-dim">No PR, deploy or release events yet for this ticket.</p>
-      )}
       <ul className="m-0 list-none space-y-2 p-0">
-        {events.data?.map((g) => (
-          <li key={g.id} className="text-[13px]">
+        {events.data.map((g) => (
+          <li key={g.id} className="text-[13px] break-words">
             <Badge className="mr-1.5">{g.kind}</Badge>
             {g.repo} · {g.ref}
             {g.environment ? ` · ${g.environment}` : ''}
@@ -86,30 +85,88 @@ export function GithubSection({ ticketKey }: { ticketKey: string }) {
   );
 }
 
-export function LinksSection({ ticketKey }: { ticketKey: string }) {
+/**
+ * Links and files in one block. Both forms stay shut until "+ Link" or "+ File" is pressed, so a
+ * ticket with nothing attached is a heading and two buttons.
+ */
+export function AttachmentsSection({ ticketKey }: { ticketKey: string }) {
   const links = useQuery(linksQuery(ticketKey));
-  const add = useAddLink(ticketKey);
-  const remove = useRemoveLink(ticketKey);
+  const files = useQuery(filesQuery(ticketKey));
+  const addLink = useAddLink(ticketKey);
+  const removeLink = useRemoveLink(ticketKey);
+  const upload = useUploadFile(ticketKey);
+  const input = useRef<HTMLInputElement>(null);
+  const [linking, setLinking] = useState(false);
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    add.mutate(
+    addLink.mutate(
       { title: title.trim(), url: url.trim() },
       {
         onSuccess: () => {
           setTitle('');
           setUrl('');
+          setLinking(false);
         },
       },
     );
   };
 
   return (
-    <section aria-labelledby="links-title">
-      <SectionTitle id="links-title">Links</SectionTitle>
-      <ul className="m-0 mb-2 list-none space-y-1 p-0">
+    <section aria-labelledby="attachments-title">
+      <div className="mb-2 flex items-center gap-2">
+        <SectionTitle id="attachments-title" className="mb-0 flex-1">
+          Attachments and links
+        </SectionTitle>
+        <Button size="sm" aria-expanded={linking} onClick={() => setLinking((open) => !open)}>
+          <Plus className="size-3.5" aria-hidden="true" />
+          Link
+        </Button>
+        <input
+          ref={input}
+          type="file"
+          className="hidden"
+          aria-label="Attachment file"
+          data-testid="attachment-input"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) upload.mutate(file);
+            e.target.value = '';
+          }}
+        />
+        <Button size="sm" onClick={() => input.current?.click()} disabled={upload.isPending}>
+          <Plus className="size-3.5" aria-hidden="true" />
+          {upload.isPending ? 'Uploading...' : 'File'}
+        </Button>
+      </div>
+      {linking && (
+        <form onSubmit={submit} className="mb-2 flex flex-wrap gap-2">
+          <Input
+            aria-label="Link title"
+            placeholder="Title"
+            value={title}
+            autoFocus
+            onChange={(e) => setTitle(e.target.value)}
+            className="min-w-24 flex-1"
+          />
+          <Input
+            aria-label="Link URL"
+            type="url"
+            placeholder="https://"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="min-w-32 flex-[2]"
+          />
+          <Button type="submit" disabled={!title.trim() || !url.trim() || addLink.isPending}>
+            Add link
+          </Button>
+        </form>
+      )}
+      {addLink.isError && <ErrorAlert className="mb-2">{errorMessage(addLink.error)}</ErrorAlert>}
+      {upload.isError && <ErrorAlert className="mb-2">{errorMessage(upload.error)}</ErrorAlert>}
+      <ul className="m-0 list-none space-y-1 p-0">
         {links.data?.map((l) => (
           <li key={l.id} className="flex items-center gap-2">
             <a
@@ -127,66 +184,13 @@ export function LinksSection({ ticketKey }: { ticketKey: string }) {
               size="icon"
               className="ml-auto size-6 min-h-6"
               aria-label={`Remove link ${l.title}`}
-              disabled={remove.isPending}
-              onClick={() => remove.mutate(l.id)}
+              disabled={removeLink.isPending}
+              onClick={() => removeLink.mutate(l.id)}
             >
               <X className="size-3.5" aria-hidden="true" />
             </Button>
           </li>
         ))}
-        {links.data?.length === 0 && <li className="text-dim">No links yet.</li>}
-      </ul>
-      <form onSubmit={submit} className="flex flex-wrap gap-2">
-        <Input
-          aria-label="Link title"
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="min-w-24 flex-1"
-        />
-        <Input
-          aria-label="Link URL"
-          type="url"
-          placeholder="https://"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className="min-w-32 flex-[2]"
-        />
-        <Button type="submit" disabled={!title.trim() || !url.trim() || add.isPending}>
-          Add link
-        </Button>
-      </form>
-      {add.isError && <ErrorAlert className="mt-2">{errorMessage(add.error)}</ErrorAlert>}
-    </section>
-  );
-}
-
-export function FilesSection({ ticketKey }: { ticketKey: string }) {
-  const files = useQuery(filesQuery(ticketKey));
-  const upload = useUploadFile(ticketKey);
-  const input = useRef<HTMLInputElement>(null);
-
-  return (
-    <section aria-labelledby="files-title">
-      <SectionTitle id="files-title">Attachments</SectionTitle>
-      <input
-        ref={input}
-        type="file"
-        className="hidden"
-        aria-label="Attachment file"
-        data-testid="attachment-input"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) upload.mutate(file);
-          e.target.value = '';
-        }}
-      />
-      <Button onClick={() => input.current?.click()} disabled={upload.isPending}>
-        <Paperclip className="size-4" aria-hidden="true" />
-        {upload.isPending ? 'Uploading...' : 'Upload a file'}
-      </Button>
-      {upload.isError && <ErrorAlert className="mt-2">{errorMessage(upload.error)}</ErrorAlert>}
-      <ul className="m-0 mt-2 list-none space-y-1 p-0">
         {files.data?.map((f) => (
           <li key={f.id} className="flex items-center gap-2">
             <span className="min-w-0 flex-1 truncate">
@@ -207,11 +211,27 @@ export function FilesSection({ ticketKey }: { ticketKey: string }) {
   );
 }
 
-/** Comments, including the GitHub bot's, in order. The server keeps no other per-ticket history. */
+/** When the ticket was made and last changed, for the foot of the sidebar. */
+export function TicketStamps({ ticket }: { ticket: Ticket }) {
+  return (
+    <p className="m-0 text-xs text-dim">
+      Created {timeAgo(ticket.created_at)}
+      <br />
+      Updated {timeAgo(ticket.updated_at)}
+    </p>
+  );
+}
+
+/**
+ * One stream of everything said on the ticket: people's comments, the GitHub bot's and each
+ * handoff, in order. "Comments" hides the last two. The server keeps no other per-ticket
+ * history, so there is nothing else to merge in.
+ */
 export function ActivitySection({ ticket }: { ticket: Ticket }) {
   const comments = useQuery(commentsQuery(ticket.key));
   const add = useAddComment(ticket.key);
   const [body, setBody] = useState('');
+  const [only, setOnly] = useState<'all' | 'comments'>('all');
 
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
@@ -220,12 +240,36 @@ export function ActivitySection({ ticket }: { ticket: Ticket }) {
     add.mutate({ body: text }, { onSuccess: () => setBody('') });
   };
 
+  const all = comments.data ?? [];
+  // With nothing but people's comments there is nothing to filter out.
+  const filterable = all.some((c) => c.source !== 'user');
+  const shown = only === 'comments' ? all.filter((c) => c.source === 'user') : all;
+
   return (
     <section aria-labelledby="comments-title">
-      <SectionTitle id="comments-title">Comments and activity</SectionTitle>
+      <div className="mb-2 flex items-center gap-2">
+        <SectionTitle id="comments-title" className="mb-0 flex-1">
+          Activity
+        </SectionTitle>
+        {filterable && (
+          <div role="group" aria-label="Show in activity" className="flex gap-1">
+            {(['all', 'comments'] as const).map((choice) => (
+              <Button
+                key={choice}
+                size="sm"
+                variant={only === choice ? 'primary' : 'secondary'}
+                aria-pressed={only === choice}
+                onClick={() => setOnly(choice)}
+              >
+                {choice === 'all' ? 'All' : 'Comments'}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
       {comments.isError && <ErrorAlert>{errorMessage(comments.error)}</ErrorAlert>}
-      <ul className="m-0 mb-3 list-none p-0">
-        {comments.data?.map((c) => (
+      <ul aria-label="Activity" className="m-0 mb-3 list-none p-0">
+        {shown.map((c) => (
           <li key={c.id} className="flex gap-2 border-b border-line py-2">
             <Avatar who={c.source === 'system' ? 'GitHub' : c.author} />
             <div className="min-w-0 flex-1">
@@ -245,11 +289,7 @@ export function ActivitySection({ ticket }: { ticket: Ticket }) {
             </div>
           </li>
         ))}
-        {comments.data?.length === 0 && <li className="text-dim">No comments yet.</li>}
-        <li className="pt-2 text-xs text-dim">
-          Created {timeAgo(ticket.created_at)}. Last changed {timeAgo(ticket.updated_at)}, now{' '}
-          {ticket.status}.
-        </li>
+        {comments.data && shown.length === 0 && <li className="text-dim">No comments yet.</li>}
       </ul>
       <form onSubmit={submit}>
         <label htmlFor="new-comment" className="sr-only">

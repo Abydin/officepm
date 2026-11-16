@@ -47,6 +47,9 @@ function setup(
   return { user: userEvent.setup(), calls };
 }
 
+const openForm = (user: ReturnType<typeof userEvent.setup>) =>
+  user.click(screen.getByRole('button', { name: 'Add a person' }));
+
 describe('PeopleSection', () => {
   it('lists the people on the ticket with department and role, and nothing like an email', () => {
     setup();
@@ -57,14 +60,17 @@ describe('PeopleSection', () => {
     expect(list.textContent).not.toContain('@');
   });
 
-  it('says so when no one else is on it', () => {
+  it('is just the add button when no one else is on it, and keeps the form shut until asked', () => {
     setup([]);
-    expect(screen.getByText(/No one else is on this ticket/)).toBeVisible();
     expect(screen.queryByRole('list', { name: 'People on this ticket' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add a person' })).toBeVisible();
+    expect(screen.queryByRole('textbox', { name: /Role/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Person to add/ })).toBeNull();
   });
 
   it('adds a person with a role, then clears the form', async () => {
     const { user, calls } = setup();
+    await openForm(user);
     await user.click(screen.getByRole('button', { name: /Person to add/ }));
     await user.click(await screen.findByRole('option', { name: /Sam Adeyemi/ }));
     expect(screen.getByRole('button', { name: 'Person to add: Sam Adeyemi' })).toBeVisible();
@@ -75,11 +81,16 @@ describe('PeopleSection', () => {
       url: '/api/tickets/FOOD-DES-1/participants',
       body: { user_id: 2, role: 'Frontend' },
     });
-    await waitFor(() => expect(screen.getByRole('textbox', { name: /Role/ })).toHaveValue(''));
+    // A successful add closes the popover; the form comes back empty.
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: /Role/ })).toBeNull());
+    await openForm(user);
+    expect(screen.getByRole('textbox', { name: /Role/ })).toHaveValue('');
+    expect(screen.getByRole('button', { name: /Person to add: Choose a person/ })).toBeVisible();
   });
 
   it('sends a null role when none was typed, and keeps Add person off until someone is chosen', async () => {
     const { user, calls } = setup();
+    await openForm(user);
     expect(screen.getByRole('button', { name: 'Add person' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: /Person to add/ }));
     await user.click(await screen.findByRole('option', { name: /Sam Adeyemi/ }));
@@ -88,13 +99,15 @@ describe('PeopleSection', () => {
     expect(calls('POST')[0]!.body).toEqual({ user_id: 2, role: null });
   });
 
-  it('limits the role field to 30 characters', () => {
-    setup();
+  it('limits the role field to 30 characters', async () => {
+    const { user } = setup();
+    await openForm(user);
     expect(screen.getByRole('textbox', { name: /Role/ })).toHaveAttribute('maxlength', '30');
   });
 
   it('filters the picker by department and leaves out people already on the ticket', async () => {
     const { user } = setup();
+    await openForm(user);
     await screen.findByRole('option', { name: 'Engineering' });
     await user.selectOptions(
       await screen.findByRole('combobox', { name: 'Department' }),
@@ -132,6 +145,7 @@ describe('PeopleSection', () => {
       </QueryClientProvider>,
     );
     const user = userEvent.setup();
+    await openForm(user);
     await user.click(screen.getByRole('button', { name: /Person to add/ }));
     await user.click(await screen.findByRole('option', { name: /Sam Adeyemi/ }));
     await user.click(screen.getByRole('button', { name: 'Add person' }));

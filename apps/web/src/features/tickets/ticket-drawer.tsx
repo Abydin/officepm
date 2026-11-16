@@ -1,51 +1,40 @@
 import * as Dialog from '@radix-ui/react-dialog';
+import * as Popover from '@radix-ui/react-popover';
 import {
   MAX_TITLE_LENGTH,
-  PRIORITIES,
   flowSupports,
   type Board,
   type Ticket,
   type TicketPatch,
 } from '@officepm/shared';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Trash2, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Avatar } from '@/components/avatar';
+import { Ellipsis, Maximize2, Minimize2, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorAlert } from '@/components/ui/alert';
-import { Combobox } from '@/components/ui/combobox';
 import { DrawerContent } from '@/components/ui/sheet';
-import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMarkHandoffsRead, unreadHandoffsQuery } from '@/features/handoffs/api';
 import { HandoffDialog } from '@/features/handoffs/handoff-dialog';
 import { boardQuery, boardTicketsQuery } from '@/features/projects/api';
 import { boardLabels } from '@/features/projects/board-filter';
+import { isTyping } from '@/features/shortcuts/is-typing';
 import { errorMessage } from '@/lib/api';
 import { personName } from '@/lib/format';
 import { sprintsQuery, ticketQuery, useDeleteTicket, useUpdateTicket } from './api';
-import { CommitInput, CommitTextarea, Field, SectionTitle } from './commit-fields';
-import {
-  ActivitySection,
-  DodSection,
-  FilesSection,
-  GithubSection,
-  LinksSection,
-} from './drawer-sections';
+import { CommitInput, CommitTextarea, Field, frameless } from './commit-fields';
+import { PropertySidebar } from './drawer-properties';
+import { ActivitySection, AttachmentsSection, DodSection } from './drawer-sections';
 import {
   FeaturePipelineSection,
   isEpic,
-  PipelineTagsSection,
+  usePipelineTagsApply,
 } from '@/features/pipeline/drawer-pipeline';
-import { PeopleSection } from './people-section';
 import { SubticketsSection } from './subtickets-section';
-import { parseEmail, usePeople } from './people';
+import { usePeople } from './people';
+import { propertyVisibility, type PropertyId } from './property-visibility';
 import { useTicketDrawer } from './use-ticket-drawer';
-
-const APPETITES = ['1 week', '2 weeks', '3 weeks', '6 weeks'];
-const LEVELS = ['epic', 'story', 'task', 'bug'];
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Mounted once in the app shell. Renders nothing unless the URL has ?t=KEY. */
 export function TicketDrawerHost() {
@@ -54,7 +43,7 @@ export function TicketDrawerHost() {
 }
 
 function TicketDrawer({ ticketKey }: { ticketKey: string }) {
-  const { close, focusTitle } = useTicketDrawer();
+  const { close, focusTitle, full } = useTicketDrawer();
   const content = useRef<HTMLDivElement>(null);
   const ticket = useQuery(ticketQuery(ticketKey));
   const t = ticket.data;
@@ -80,6 +69,7 @@ function TicketDrawer({ ticketKey }: { ticketKey: string }) {
     <Dialog.Root open onOpenChange={(open) => !open && close()}>
       <DrawerContent
         ref={content}
+        full={full}
         aria-describedby={undefined}
         onOpenAutoFocus={(event) => {
           // Start on the dialog itself so a screen reader announces its title first;
@@ -103,7 +93,7 @@ function TicketDrawer({ ticketKey }: { ticketKey: string }) {
             <Skeleton className="h-40" />
           </div>
         ) : (
-          <DrawerBody ticket={t} board={board.data} focusTitle={focusTitle} />
+          <DrawerBody ticket={t} board={board.data} focusTitle={focusTitle} container={content} />
         )}
       </DrawerContent>
     </Dialog.Root>
@@ -114,18 +104,24 @@ function DrawerBody({
   ticket,
   board,
   focusTitle,
+  container,
 }: {
   ticket: Ticket;
   board: Board;
   focusTitle: boolean;
+  /** The dialog element: the drawer's keys are heard here, so they stop at the dialog's edge. */
+  container: RefObject<HTMLDivElement | null>;
 }) {
-  const { close, open } = useTicketDrawer();
+  const { close, open, full, setFull } = useTicketDrawer();
   const update = useUpdateTicket(ticket.key);
   const remove = useDeleteTicket();
   const [version, setVersion] = useState(0);
   const [confirming, setConfirming] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   // A status picked here is not applied: it opens the handoff dialog, and the select stays put until that confirms.
   const [moveTo, setMoveTo] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<ReadonlySet<PropertyId>>(new Set());
+  const [pickerOpen, setPickerOpen] = useState(false);
   const titleFocused = useRef(false);
 
   const boardTickets = useQuery(boardTicketsQuery(ticket.project_slug, ticket.board_slug));
@@ -147,6 +143,14 @@ function DrawerBody({
     [boardTickets.data, ticket.key],
   );
 
+  const pipelineTagsApply = usePipelineTagsApply(ticket);
+  const { shown, addable } = propertyVisibility({
+    board,
+    ticket,
+    pipelineTags: pipelineTagsApply,
+    revealed,
+  });
+
   // Saving puts the old value back, on screen and in the cache, if the server refuses.
   const save = (patch: TicketPatch) =>
     update.mutate(patch, { onError: () => setVersion((v) => v + 1) });
@@ -155,12 +159,31 @@ function DrawerBody({
   // The directory's real name when it is known, else the readable form of the email.
   const nameOf = (email: string) =>
     people.find((p) => p.value === email)?.label ?? personName(email);
-  const person = (email: string | null, empty: string) => (
-    <>
-      <Avatar who={email} decorative />
-      <span className="min-w-0 flex-1 truncate">{email ? nameOf(email) : empty}</span>
-    </>
-  );
+
+  // F, P and R, heard on the dialog itself and only while no field has the keys. Popovers and the
+  // handoff dialog are portalled out of it, so their own typing and shortcuts never reach here.
+  const hasAddable = addable.length > 0;
+  useEffect(() => {
+    const el = container.current;
+    if (!el) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (isTyping(e.target)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'f') {
+        e.preventDefault();
+        setFull(!full);
+      } else if (key === 'p' && hasAddable) {
+        e.preventDefault();
+        setPickerOpen(true);
+      } else if (key === 'r') {
+        e.preventDefault();
+        document.getElementById('new-comment')?.focus();
+      }
+    };
+    el.addEventListener('keydown', onKeyDown);
+    return () => el.removeEventListener('keydown', onKeyDown);
+  }, [container, full, setFull, hasAddable]);
 
   return (
     <>
@@ -168,6 +191,16 @@ function DrawerBody({
         <span className="font-mono font-bold">{ticket.key}</span>
         {ticket.level && ticket.level !== ticket.type && <Badge>{ticket.level}</Badge>}
         <Badge>{ticket.type}</Badge>
+        {ticket.parent_key && (
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={`in ${ticket.parent_key}, open epic`}
+            onClick={() => open(ticket.parent_key!)}
+          >
+            in <span className="font-mono">{ticket.parent_key}</span>
+          </Button>
+        )}
         {ticket.subticket_of && (
           <Button
             size="sm"
@@ -193,15 +226,57 @@ function DrawerBody({
             >
               Yes, delete
             </Button>
-            <Button size="sm" onClick={() => setConfirming(false)}>
+            <Button size="sm" autoFocus onClick={() => setConfirming(false)}>
               Keep it
             </Button>
           </>
         ) : (
-          <Button variant="danger" size="sm" onClick={() => setConfirming(true)}>
-            <Trash2 className="size-3.5" aria-hidden="true" />
-            Delete
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="max-sm:hidden"
+              aria-label={full ? 'Back to side panel' : 'Open full page'}
+              title={full ? 'Back to side panel (F)' : 'Open full page (F)'}
+              onClick={() => setFull(!full)}
+            >
+              {full ? (
+                <Minimize2 className="size-4" aria-hidden="true" />
+              ) : (
+                <Maximize2 className="size-4" aria-hidden="true" />
+              )}
+            </Button>
+            <Popover.Root open={menuOpen} onOpenChange={setMenuOpen}>
+              <Popover.Trigger asChild>
+                <Button variant="ghost" size="icon" aria-label="More actions">
+                  <Ellipsis className="size-4" aria-hidden="true" />
+                </Button>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content
+                  role="group"
+                  aria-label="Ticket actions"
+                  align="end"
+                  sideOffset={4}
+                  // The menu's trigger is replaced by the confirmation, so focus goes there instead.
+                  onCloseAutoFocus={(event) => confirming && event.preventDefault()}
+                  className="z-[60] animate-pop rounded-lg border border-line-strong bg-raised p-1.5 shadow-pop"
+                >
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setConfirming(true);
+                    }}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                    Delete ticket
+                  </Button>
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
+          </>
         )}
         <Dialog.Close asChild>
           <Button variant="ghost" size="icon" aria-label="Close ticket" title="Close (Esc)">
@@ -210,301 +285,133 @@ function DrawerBody({
         </Dialog.Close>
       </header>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-        {update.isError && <ErrorAlert>{errorMessage(update.error)}</ErrorAlert>}
-        {remove.isError && <ErrorAlert>{errorMessage(remove.error)}</ErrorAlert>}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          className={
+            full ? 'mx-auto w-full max-w-6xl p-4 @min-[700px]:p-6' : 'p-4 @min-[700px]:p-5'
+          }
+        >
+          {update.isError && <ErrorAlert className="mb-4">{errorMessage(update.error)}</ErrorAlert>}
+          {remove.isError && <ErrorAlert className="mb-4">{errorMessage(remove.error)}</ErrorAlert>}
 
-        <section>
-          <Field label="Title">
-            {(id) => (
-              <CommitInput
-                key={k('title', ticket.title)}
-                id={id}
-                value={ticket.title}
-                maxLength={MAX_TITLE_LENGTH}
-                className="text-[15px] font-semibold"
-                ref={(el) => {
-                  if (el && focusTitle && !titleFocused.current) {
-                    titleFocused.current = true;
-                    el.focus();
-                    el.select();
-                  }
-                }}
-                onCommit={(value) => {
-                  if (value.trim()) save({ title: value.trim() });
-                  else setVersion((v) => v + 1);
-                }}
-              />
-            )}
-          </Field>
-        </section>
-
-        <section aria-labelledby="fields-title">
-          <SectionTitle id="fields-title">Fields</SectionTitle>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Status">
-              {(id) => (
-                <Select id={id} value={ticket.status} onChange={(e) => setMoveTo(e.target.value)}>
-                  {board.statuses.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-            <Field label="Priority">
-              {(id) => (
-                <Select
-                  id={id}
-                  value={ticket.priority ?? ''}
-                  onChange={(e) =>
-                    save({ priority: PRIORITIES.find((p) => p === e.target.value) ?? null })
-                  }
+          {/* The sidebar comes last in the page order, so the description is read first; on a phone it is
+              moved up under the title with `order`, so Status and Assignee are not a scroll away. */}
+          <div className="flex flex-col gap-5 @min-[700px]:grid @min-[700px]:grid-cols-[minmax(0,1fr)_14rem] @min-[700px]:gap-x-6">
+            <div className="order-1 min-w-0 space-y-3 @min-[700px]:col-start-1 @min-[700px]:row-start-1">
+              {ticket.blocked && (
+                <section
+                  aria-label="Blocked"
+                  className="rounded-md border border-err bg-err-soft px-3 py-2 [&_label]:text-fg"
                 >
-                  <option value="">None</option>
-                  {PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {cap(p)}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-            <Field label="Due date">
-              {(id) => (
-                <CommitInput
-                  key={k('due', ticket.due_date ?? '')}
-                  id={id}
-                  type="date"
-                  value={ticket.due_date ?? ''}
-                  onCommit={(value) => save({ due_date: value || null })}
-                />
-              )}
-            </Field>
-            <Field label="Assignee">
-              {(id) => (
-                <Combobox
-                  id={id}
-                  options={people}
-                  value={ticket.assignee}
-                  triggerLabel={`Assignee: ${ticket.assignee ? nameOf(ticket.assignee) : 'Unassigned'}`}
-                  searchLabel="Find a person or type an email"
-                  parseCustom={parseEmail}
-                  clearOption={{ label: 'Unassigned', onSelect: () => save({ assignee: null }) }}
-                  onSelect={(assignee) => save({ assignee })}
-                >
-                  {person(ticket.assignee, 'Unassigned')}
-                </Combobox>
-              )}
-            </Field>
-            <Field label="QA owner">
-              {(id) => (
-                <Combobox
-                  id={id}
-                  options={people}
-                  value={ticket.qa_owner}
-                  triggerLabel={`QA owner: ${ticket.qa_owner ? nameOf(ticket.qa_owner) : 'None'}`}
-                  searchLabel="Find a person or type an email"
-                  parseCustom={parseEmail}
-                  clearOption={{ label: 'No QA owner', onSelect: () => save({ qa_owner: null }) }}
-                  onSelect={(qa_owner) => save({ qa_owner })}
-                >
-                  {person(ticket.qa_owner, 'None')}
-                </Combobox>
-              )}
-            </Field>
-            {timeboxed && (
-              <Field
-                label={
-                  board.flow === 'shapeup'
-                    ? 'Cycle'
-                    : board.flow === 'waterfall'
-                      ? 'Phase'
-                      : 'Sprint'
-                }
-              >
-                {(id) => (
-                  <Select
-                    id={id}
-                    value={ticket.sprint_id ?? ''}
-                    onChange={(e) => save({ sprint_id: e.target.value || null })}
-                  >
-                    <option value="">None</option>
-                    {ticket.sprint_id && !sprints.data?.some((s) => s.id === ticket.sprint_id) && (
-                      <option value={ticket.sprint_id}>Unknown</option>
+                  <Field label="Blocked: reason">
+                    {(id) => (
+                      <CommitInput
+                        key={k('reason', ticket.blocker_reason ?? '')}
+                        id={id}
+                        placeholder="Why is this blocked?"
+                        value={ticket.blocker_reason ?? ''}
+                        onCommit={(value) => save({ blocker_reason: value.trim() || null })}
+                      />
                     )}
-                    {sprints.data?.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} · {s.status}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-            )}
-            {board.points && (
-              <Field label="Points">
+                  </Field>
+                </section>
+              )}
+              <Field label="Title" hideLabel>
                 {(id) => (
                   <CommitInput
-                    key={k('points', String(ticket.points ?? ''))}
+                    key={k('title', ticket.title)}
                     id={id}
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={ticket.points == null ? '' : String(ticket.points)}
+                    value={ticket.title}
+                    maxLength={MAX_TITLE_LENGTH}
+                    className={`${frameless} text-lg font-semibold`}
+                    ref={(el) => {
+                      if (el && focusTitle && !titleFocused.current) {
+                        titleFocused.current = true;
+                        el.focus();
+                        el.select();
+                      }
+                    }}
                     onCommit={(value) => {
-                      const n = Number(value);
-                      if (value === '') save({ points: null });
-                      else if (Number.isInteger(n) && n >= 0) save({ points: n });
+                      if (value.trim()) save({ title: value.trim() });
                       else setVersion((v) => v + 1);
                     }}
                   />
                 )}
               </Field>
-            )}
-            {board.flow === 'shapeup' && (
-              <Field label="Appetite">
-                {(id) => (
-                  <Select
-                    id={id}
-                    value={ticket.appetite ?? ''}
-                    onChange={(e) => save({ appetite: e.target.value || null })}
-                  >
-                    <option value="">None</option>
-                    {ticket.appetite && !APPETITES.includes(ticket.appetite) && (
-                      <option value={ticket.appetite}>{ticket.appetite}</option>
-                    )}
-                    {APPETITES.map((a) => (
-                      <option key={a} value={a}>
-                        {a}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-            )}
-            {board.agile && (
-              <Field label="Level">
-                {(id) => (
-                  <Select
-                    id={id}
-                    value={ticket.level ?? 'task'}
-                    onChange={(e) => save({ level: e.target.value })}
-                  >
-                    {LEVELS.map((l) => (
-                      <option key={l} value={l}>
-                        {l}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-            )}
-            <Field label="Epic">
-              {(id) => (
-                <Combobox
-                  id={id}
-                  options={parents}
-                  value={ticket.parent_key}
-                  triggerLabel={`Epic: ${ticket.parent_key ?? 'None'}`}
-                  searchLabel="Find a ticket"
-                  clearOption={{ label: 'No epic', onSelect: () => save({ parent_key: null }) }}
-                  onSelect={(parent_key) => save({ parent_key })}
-                >
-                  <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
-                    {ticket.parent_key ?? <span className="font-sans text-dim">None</span>}
-                  </span>
-                </Combobox>
-              )}
-            </Field>
-            <LabelsField
-              labels={ticket.labels}
-              suggestions={boardLabels(boardTickets.data ?? [])}
-              onChange={(labels) => save({ labels })}
-            />
-          </div>
-        </section>
+            </div>
 
-        {isEpic(ticket) && <FeaturePipelineSection ticket={ticket} board={board} />}
-        {!isEpic(ticket) && <PipelineTagsSection ticket={ticket} />}
-
-        <SubticketsSection ticket={ticket} />
-
-        <PeopleSection ticket={ticket} />
-
-        {board.agile && (
-          <section aria-labelledby="blockers-title">
-            <SectionTitle id="blockers-title">Blockers</SectionTitle>
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="checkbox"
-                checked={ticket.blocked}
-                onChange={(e) => save({ blocked: e.target.checked })}
-                className="size-4 accent-[var(--accent)]"
-              />
-              Blocked
-            </label>
-            {ticket.blocked && (
-              <div className="mt-2">
-                <Field label="Reason">
+            <div className="order-3 min-w-0 space-y-5 @min-[700px]:col-start-1 @min-[700px]:row-start-2">
+              <section>
+                <Field label="Description">
                   {(id) => (
-                    <CommitInput
-                      key={k('reason', ticket.blocker_reason ?? '')}
+                    <CommitTextarea
+                      key={k('description', ticket.description ?? '')}
                       id={id}
-                      value={ticket.blocker_reason ?? ''}
-                      onCommit={(value) => save({ blocker_reason: value.trim() || null })}
+                      rows={6}
+                      value={ticket.description ?? ''}
+                      onCommit={(value) => save({ description: value.trim() || null })}
                     />
                   )}
                 </Field>
-              </div>
-            )}
-          </section>
-        )}
+              </section>
 
-        {board.agile && <DodSection ticketKey={ticket.key} />}
-
-        <section>
-          <Field label="Description">
-            {(id) => (
-              <CommitTextarea
-                key={k('description', ticket.description ?? '')}
-                id={id}
-                rows={4}
-                value={ticket.description ?? ''}
-                onCommit={(value) => save({ description: value.trim() || null })}
-              />
-            )}
-          </Field>
-        </section>
-
-        {ticket.level === 'story' && (
-          <section>
-            <Field label="Acceptance criteria (one per line)">
-              {(id) => (
-                <CommitTextarea
-                  key={k('criteria', ticket.acceptance_criteria.join('\n'))}
-                  id={id}
-                  rows={3}
-                  value={ticket.acceptance_criteria.join('\n')}
-                  onCommit={(value) =>
-                    save({
-                      acceptance_criteria: value
-                        .split('\n')
-                        .map((line) => line.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                />
+              {ticket.level === 'story' && (
+                <section>
+                  <Field label="Acceptance criteria (one per line)">
+                    {(id) => (
+                      <CommitTextarea
+                        key={k('criteria', ticket.acceptance_criteria.join('\n'))}
+                        id={id}
+                        rows={3}
+                        value={ticket.acceptance_criteria.join('\n')}
+                        onCommit={(value) =>
+                          save({
+                            acceptance_criteria: value
+                              .split('\n')
+                              .map((line) => line.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                      />
+                    )}
+                  </Field>
+                </section>
               )}
-            </Field>
-          </section>
-        )}
 
-        {board.has_github && <GithubSection ticketKey={ticket.key} />}
-        <LinksSection ticketKey={ticket.key} />
-        <FilesSection ticketKey={ticket.key} />
-        <ActivitySection ticket={ticket} />
+              {board.agile && <DodSection ticketKey={ticket.key} />}
+
+              {isEpic(ticket) && <FeaturePipelineSection ticket={ticket} board={board} />}
+
+              <SubticketsSection ticket={ticket} />
+
+              <AttachmentsSection ticketKey={ticket.key} />
+
+              <ActivitySection ticket={ticket} />
+            </div>
+
+            <div className="order-2 min-w-0 @min-[700px]:col-start-2 @min-[700px]:row-span-2 @min-[700px]:row-start-1">
+              <PropertySidebar
+                ticket={ticket}
+                board={board}
+                shown={shown}
+                addable={addable}
+                onReveal={(id) => setRevealed((prev) => new Set(prev).add(id))}
+                pickerOpen={pickerOpen}
+                onPickerOpenChange={setPickerOpen}
+                save={save}
+                reset={() => setVersion((v) => v + 1)}
+                keyed={k}
+                onStatusChange={setMoveTo}
+                people={people}
+                nameOf={nameOf}
+                parents={parents}
+                labelSuggestions={boardLabels(boardTickets.data ?? [])}
+                sprints={sprints.data}
+                hasGithub={board.has_github}
+              />
+            </div>
+          </div>
+        </div>
       </div>
       {moveTo !== null && (
         <HandoffDialog
@@ -515,66 +422,5 @@ function DrawerBody({
         />
       )}
     </>
-  );
-}
-
-/** Label chips with a picker for adding: existing labels on the board, or a new one (up to 8, 24 characters). */
-function LabelsField({
-  labels,
-  suggestions,
-  onChange,
-}: {
-  labels: string[];
-  suggestions: string[];
-  onChange: (labels: string[]) => void;
-}) {
-  const full = labels.length >= 8;
-  return (
-    <div className="col-span-2 flex flex-col gap-1">
-      <span id="labels-label" className="text-xs text-dim">
-        Labels
-      </span>
-      <div
-        role="group"
-        aria-labelledby="labels-label"
-        className="flex flex-wrap items-center gap-1.5"
-      >
-        {labels.map((l) => (
-          <span
-            key={l}
-            className="inline-flex items-center gap-1 rounded border border-line-strong px-1.5 py-0.5 text-xs"
-          >
-            {l}
-            <button
-              type="button"
-              aria-label={`Remove label ${l}`}
-              className="inline-flex size-4 cursor-pointer items-center justify-center rounded text-dim hover:text-fg"
-              onClick={() => onChange(labels.filter((x) => x !== l))}
-            >
-              <X className="size-3" aria-hidden="true" />
-            </button>
-          </span>
-        ))}
-        {!full && (
-          <Combobox
-            triggerClassName="w-auto min-h-6 px-2 py-0.5 text-xs text-dim"
-            triggerLabel="Add label"
-            searchLabel="Find a label or type a new one"
-            options={suggestions
-              .filter((s) => !labels.includes(s))
-              .map((s) => ({ value: s, label: s }))}
-            parseCustom={(text) => {
-              const v = text.trim();
-              return v && v.length <= 24 ? { value: v, label: `"${v}"` } : null;
-            }}
-            onSelect={(label) => onChange([...labels, label])}
-          >
-            <Plus className="size-3" aria-hidden="true" />
-            Add label
-          </Combobox>
-        )}
-        {full && <span className="text-xs text-dim">Eight labels is the most.</span>}
-      </div>
-    </div>
   );
 }

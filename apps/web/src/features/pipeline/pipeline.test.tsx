@@ -1,12 +1,10 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { EpicPipeline } from '@officepm/shared';
 import { describe, expect, it } from 'vitest';
 import { createQueryClient } from '@/app/query-client';
 import { foodProject } from '@/test/fixtures';
 import { jsonResponse, stubApi } from '@/test/helpers';
-import { PhaseHistory } from './phase-history';
 import { PipelineSettings } from './pipeline-settings';
 import { PipelineStepper } from './pipeline-stepper';
 
@@ -41,63 +39,6 @@ describe('PipelineStepper', () => {
         .getAllByRole('listitem')
         .some((s) => s.hasAttribute('aria-current')),
     ).toBe(false);
-  });
-});
-
-describe('PhaseHistory', () => {
-  const move = (
-    over: Partial<EpicPipeline['history'][number]>,
-  ): EpicPipeline['history'][number] => ({
-    id: 'h',
-    decision: 'approve',
-    from_phase: 'Product',
-    to_phase: 'Design',
-    completed: false,
-    reason: null,
-    note: null,
-    from_name: 'Maya Okafor',
-    to_names: [],
-    to_department: null,
-    created_at: '2026-11-11 10:00:00',
-    ...over,
-  });
-
-  it('renders nothing for no moves', () => {
-    const { container } = render(<PhaseHistory moves={[]} />);
-    expect(container).toBeEmptyDOMElement();
-  });
-
-  it('says who moved, where, why, and to whom, oldest first', () => {
-    render(
-      <PhaseHistory
-        moves={[
-          move({
-            id: '1',
-            note: 'Brief attached',
-            to_names: ['Sam Adeyemi'],
-            to_department: 'Design',
-          }),
-          move({
-            id: '2',
-            decision: 'reject',
-            from_phase: 'Design',
-            to_phase: 'Product',
-            reason: 'Scope unclear',
-          }),
-          move({ id: '3', from_phase: 'Release', to_phase: null, completed: true }),
-        ]}
-      />,
-    );
-    const items = within(screen.getByRole('list', { name: 'Pipeline history' })).getAllByRole(
-      'listitem',
-    );
-    expect(items[0]).toHaveTextContent('Moved from Product to Design');
-    expect(items[0]).toHaveTextContent('Maya Okafor');
-    expect(items[0]).toHaveTextContent('to Sam Adeyemi');
-    expect(items[0]).toHaveTextContent('Brief attached');
-    expect(items[1]).toHaveTextContent('Sent back from Design to Product');
-    expect(items[1]).toHaveTextContent('Reason: Scope unclear');
-    expect(items[2]).toHaveTextContent('Completed the feature from Release');
   });
 });
 
