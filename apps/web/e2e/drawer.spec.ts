@@ -31,7 +31,7 @@ test('edits a ticket in the drawer and the edits survive a reload', async ({ pag
   await expect(drawer.getByRole('button', { name: 'Remove label print' })).toBeVisible();
 
   await drawer.getByLabel('Add a comment').fill('Drafts are in the shared folder');
-  await drawer.getByRole('button', { name: 'Comment' }).click();
+  await drawer.getByRole('button', { name: 'Comment', exact: true }).click();
   await expect(drawer.getByText('Drafts are in the shared folder')).toBeVisible();
 
   // Escape closes it and the board behind it is intact.

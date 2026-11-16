@@ -211,9 +211,11 @@ for (const theme of ['dark', 'light'] as const) {
       expect(patched.status()).toBe(200);
 
       await page.goto(`/#/projects/food/boards/eng/epics?t=${epic}`);
+      // A feature starts on the pipeline once the project has used one; otherwise start it here.
       const start = drawerOf(page).getByRole('button', { name: 'Start pipeline' });
-      await expect(start).toBeVisible();
-      await start.click();
+      const move = drawerOf(page).getByRole('button', { name: 'Move feature' });
+      await expect(start.or(move)).toBeVisible();
+      if (await start.isVisible()) await start.click();
       await expect(drawerOf(page).getByRole('button', { name: 'Move feature' })).toBeVisible();
       expect(await violations(page)).toEqual([]);
 
