@@ -86,7 +86,10 @@ test('the sub-ticket box is on a story, and not on an epic or a sub-ticket', asy
     page.getByRole('dialog').getByText('Create a ticket and set this epic as its Epic.'),
   ).toBeVisible();
   await expect(box).toHaveCount(0);
-  await expect(page.getByRole('dialog').getByText('Epic', { exact: true })).toBeVisible();
+  // The empty Epic row is not on screen; it is offered under "+ Add property".
+  const drawer = page.getByRole('dialog', { name: /^Ticket / });
+  await drawer.getByRole('button', { name: 'Add property' }).click();
+  await expect(page.getByRole('option', { name: 'Epic', exact: true })).toBeVisible();
 });
 
 test('C on Overview opens the palette with an empty filter', async ({ page }) => {
