@@ -169,7 +169,7 @@ export function PropertySidebar(props: PropertySidebarProps) {
                 )}
                 {props.sprints?.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} · {s.status}
+                    {s.name} {'\u00b7'} {s.status}
                   </option>
                 ))}
               </Select>
