@@ -43,13 +43,15 @@ test.describe('the ticket view', () => {
     const drawer = drawerOf(page);
     const description = drawer.getByLabel('Description');
     await expect(description).toBeInViewport({ ratio: 1 });
-    const inOrder = await drawer.evaluate((el) => {
-      const d = el.querySelector('textarea')!;
+    // A string, because the e2e project's TypeScript has no DOM types to check a page function against.
+    const inOrder = await page.evaluate(`(() => {
+      const el = document.querySelector('[role="dialog"]');
+      const d = el.querySelector('textarea');
       const status = [...el.querySelectorAll('select')].find((s) =>
-        s.labels?.[0]?.textContent?.includes('Status'),
-      )!;
+        (s.labels[0]?.textContent || '').includes('Status'),
+      );
       return Boolean(d.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING);
-    });
+    })()`);
     expect(inOrder).toBe(true);
     // Empty properties are not on screen.
     for (const name of ['Priority', 'Due date', 'Points']) {
@@ -63,17 +65,12 @@ test.describe('the ticket view', () => {
     made.push(key);
     await page.goto(`/#/projects/food/boards/eng?t=${key}`);
     await expect(drawerOf(page).getByLabel('Title', { exact: true })).toBeVisible();
-    const count = await drawerOf(page)
-      .locator('button, a[href], input, select, textarea, [role="button"], [tabindex="0"]')
-      .evaluateAll(
-        (els) =>
-          els.filter(
-            (e) =>
-              e.getClientRects().length > 0 &&
-              getComputedStyle(e).visibility !== 'hidden' &&
-              (e as HTMLInputElement).type !== 'hidden',
-          ).length,
-      );
+    const count = (await page.evaluate(`(() => {
+      const el = document.querySelector('[role="dialog"]');
+      return [...el.querySelectorAll('button, a[href], input, select, textarea, [role="button"], [tabindex="0"]')].filter(
+        (e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden' && e.type !== 'hidden',
+      ).length;
+    })()`)) as number;
     console.log(`interactive controls on a fresh story: ${count}`);
     // Before this layout: 31 measured in the same way.
     expect(count).toBeLessThan(31);
