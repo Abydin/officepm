@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { Hono, type Context } from 'hono';
 import type { AppContext, AppEnv } from '../../context.js';
+import { injectGoatCounter, readIndexHtml } from '../../http/security-headers.js';
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=UTF-8',
@@ -47,7 +48,24 @@ export function staticRoutes(ctx: AppContext) {
       headers: { 'content-type': 'application/json' },
     });
 
-  router.get('/', send('index.html'));
+  // Visitor counting is opt-in. Unset, the file streams exactly as it always has; set, the
+  // page is the same file with one script tag added, read once at startup.
+  const counted = ctx.config.goatCounterCode
+    ? injectGoatCounter(readIndexHtml(webDir), ctx.config.goatCounterCode)
+    : '';
+  router.get(
+    '/',
+    counted
+      ? () =>
+          new Response(counted, {
+            headers: {
+              'content-type': TYPES['.html'] as string,
+              'content-length': String(Buffer.byteLength(counted)),
+              'cache-control': 'public, max-age=0',
+            },
+          })
+      : send('index.html'),
+  );
   router.get('/app.js', send('app.js'));
   router.get('/styles.css', send('styles.css'));
 

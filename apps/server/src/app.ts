@@ -35,7 +35,10 @@ export function createApp(ctx: AppContext): Hono<AppEnv> {
   if (demo && !ctx.loginThrottle) ctx.loginThrottle = new LoginThrottle(DEMO_LOGIN_THROTTLE);
 
   // First, so that every response, errors and 413s included, carries the headers.
-  app.use('*', securityHeaders(buildCsp(readIndexHtml(ctx.config.webDir))));
+  app.use(
+    '*',
+    securityHeaders(buildCsp(readIndexHtml(ctx.config.webDir), ctx.config.goatCounterCode)),
+  );
   // Express labelled JSON "application/json; charset=utf-8"; keep that header exactly.
   app.use('*', async (c, next) => {
     await next();
