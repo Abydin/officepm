@@ -19,10 +19,15 @@ type Handler = (init: RequestInit | undefined, url: URL) => Response | Promise<R
  * ignored). An unrouted request fails the test loudly instead of hanging.
  */
 export function stubApi(routes: Record<string, Handler | Response | object>) {
+  // The page asks /api/config on load; a test that does not care gets "not the demo".
+  const all: Record<string, Handler | Response | object> = {
+    'GET /api/config': { demo: false },
+    ...routes,
+  };
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), 'http://localhost');
     const key = `${init?.method ?? 'GET'} ${url.pathname}`;
-    const route = routes[key];
+    const route = all[key];
     if (route === undefined) throw new Error(`Unrouted request in test: ${key}`);
     if (typeof route === 'function') return route(init, url);
     return route instanceof Response ? route.clone() : jsonResponse(route);

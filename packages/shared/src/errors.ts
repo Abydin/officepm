@@ -4,6 +4,10 @@ import { z } from 'zod';
 export const ErrorBodySchema = z.object({ error: z.string() });
 export type ErrorBody = z.infer<typeof ErrorBodySchema>;
 
+/** GET /api/config: what the page needs to know before anyone signs in. */
+export const AppConfigSchema = z.object({ demo: z.boolean() });
+export type AppConfig = z.infer<typeof AppConfigSchema>;
+
 /** `{ ok: true }`, returned by deletes and some patches. */
 export const OkSchema = z.object({ ok: z.literal(true) });
 export type Ok = z.infer<typeof OkSchema>;

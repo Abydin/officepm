@@ -6,6 +6,7 @@
  */
 export const qk = {
   session: ['session'] as const,
+  config: ['config'] as const,
   dashboard: ['dashboard'] as const,
   projects: {
     all: ['projects'] as const,

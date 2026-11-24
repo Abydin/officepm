@@ -146,6 +146,11 @@
   #root {
     height: 100%;
   }
+  /* Room for the public-demo banner. The variable is only set in demo mode, so this is 0 otherwise. */
+  #root {
+    box-sizing: border-box;
+    padding-top: var(--demo-banner-h, 0px);
+  }
   body {
     margin: 0;
     background: var(--bg);
