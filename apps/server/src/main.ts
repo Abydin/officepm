@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { bootstrapAdmin, seedBoards, startSessionCleanup } from './bootstrap.js';
+import { ensureDemoWorkspace, startDemoReset } from './demo.js';
 import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { openDatabase } from './db/index.js';
@@ -45,7 +46,15 @@ async function main(): Promise<void> {
     dashboardCache: new Map(),
   };
   seedBoards(ctx);
-  const createdAdmin = await bootstrapAdmin(ctx);
+  // The public demo comes up with the demo workspace and never creates the random-password admin.
+  let createdAdmin = false;
+  if (config.demoMode) {
+    ensureDemoWorkspace(ctx);
+    startDemoReset(ctx);
+    console.log('[OfficePM] DEMO_MODE on: public demo, reset every night at 03:00 UTC.');
+  } else {
+    createdAdmin = await bootstrapAdmin(ctx);
+  }
   startSessionCleanup(ctx);
   ctx.events.startHeartbeat();
 

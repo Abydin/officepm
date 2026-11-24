@@ -17,10 +17,10 @@ export class BodyTooLargeError extends HttpError {
 
 const UPLOAD_ROUTE = /^\/api\/(projects|tickets)\/[^/]+\/files\/?$/;
 
-function capFor(method: string, path: string, contentType: string): number {
+function capFor(method: string, path: string, contentType: string, jsonCap: number): number {
   const isUpload =
     method === 'POST' && UPLOAD_ROUTE.test(path) && /^multipart\/form-data\b/i.test(contentType);
-  return isUpload ? MAX_UPLOAD_REQUEST_BYTES : MAX_JSON_BYTES;
+  return isUpload ? MAX_UPLOAD_REQUEST_BYTES : jsonCap;
 }
 
 /**
@@ -30,28 +30,33 @@ function capFor(method: string, path: string, contentType: string): number {
  * a lying or absent Content-Length (chunked) cannot make the server buffer more
  * than the cap. Hono's own bodyLimit trusts a Content-Length that is under the cap.
  */
-export const bodyLimit: MiddlewareHandler = async (c, next) => {
-  const body = c.req.raw.body;
-  if (!body) return next();
-  const cap = capFor(c.req.method, c.req.path, c.req.header('content-type') ?? '');
+export const createBodyLimit =
+  (jsonCap: number = MAX_JSON_BYTES): MiddlewareHandler =>
+  async (c, next) => {
+    const body = c.req.raw.body;
+    if (!body) return next();
+    const cap = capFor(c.req.method, c.req.path, c.req.header('content-type') ?? '', jsonCap);
 
-  const declared = c.req.header('content-length');
-  if (declared !== undefined && Number(declared) > cap) {
-    // Leaves the unread body to be dropped with the connection.
-    void body.cancel().catch(() => {});
-    throw new BodyTooLargeError();
-  }
+    const declared = c.req.header('content-length');
+    if (declared !== undefined && Number(declared) > cap) {
+      // Leaves the unread body to be dropped with the connection.
+      void body.cancel().catch(() => {});
+      throw new BodyTooLargeError();
+    }
 
-  let seen = 0;
-  const counted = body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        seen += chunk.byteLength;
-        if (seen > cap) controller.error(new BodyTooLargeError());
-        else controller.enqueue(chunk);
-      },
-    }),
-  );
-  c.req.raw = new Request(c.req.raw, { body: counted, duplex: 'half' } as RequestInit);
-  return next();
-};
+    let seen = 0;
+    const counted = body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          seen += chunk.byteLength;
+          if (seen > cap) controller.error(new BodyTooLargeError());
+          else controller.enqueue(chunk);
+        },
+      }),
+    );
+    c.req.raw = new Request(c.req.raw, { body: counted, duplex: 'half' } as RequestInit);
+    return next();
+  };
+
+/** The limit the server uses unless something narrower is asked for (the public demo asks). */
+export const bodyLimit = createBodyLimit();

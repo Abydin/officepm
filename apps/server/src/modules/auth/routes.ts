@@ -7,7 +7,7 @@ import { findSessionUser, requireAuth, SESSION_COOKIE } from '../../http/auth.js
 import { createAuthService, TooManyAttempts } from './service.js';
 
 /** The client address the throttle keys on. X-Forwarded-For counts only behind a trusted proxy. */
-function clientIp(c: Context, trustProxy: boolean): string {
+export function clientIp(c: Context, trustProxy: boolean): string {
   if (trustProxy) {
     // The rightmost entry is the one our own proxy appended; the rest the client can forge.
     const last = c.req.header('x-forwarded-for')?.split(',').pop()?.trim();

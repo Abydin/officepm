@@ -31,6 +31,11 @@ export class EventBus {
     };
   }
 
+  /** Ends every stream, e.g. after the demo workspace is reset and every session with it. */
+  closeAll(): number {
+    return this.closeWhere(() => true);
+  }
+
   /** Ends every stream of a user, e.g. after a password reset. Returns how many. */
   closeForUser(userId: number): number {
     return this.closeWhere((o) => o.userId === userId);

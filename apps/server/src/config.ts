@@ -22,7 +22,14 @@ export interface Config {
   adminPassword: string;
   /** True when no ADMIN_PASSWORD was set, so one was generated and must be printed once. */
   adminPasswordGenerated: boolean;
+  /** DEMO_MODE=true: the hosted public demo (see demo.ts). Off unless set. */
+  demoMode: boolean;
+  /** GoatCounter site code (GOATCOUNTER_CODE), already validated. Empty means no visitor counting. */
+  goatCounterCode: string;
 }
+
+/** A DNS label: what a GoatCounter site code is. Strict, because the value goes into served HTML. */
+export const GOATCOUNTER_CODE_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
 
 // apps/server/{src,dist}/config.(ts|js): three levels up is the repo root.
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
@@ -31,8 +38,18 @@ const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
  * Reads the same environment variables v1 does, with the same defaults:
  * PORT, PM_DATA_DIR, PM_PROJECTS_FILE, PM_TOKEN, NODE_ENV, ADMIN_EMAIL and
  * ADMIN_PASSWORD, plus the v2-only PM_WEB_DIR and PM_TRUST_PROXY. PM_DATA_DIR defaults to the repo root, where v1 kept pm.db.
+ * DEMO_MODE and GOATCOUNTER_CODE belong to the hosted demo and are off when unset.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const demoMode = env.DEMO_MODE === '1' || env.DEMO_MODE === 'true';
+  // The demo wipes its database nightly, so it must never fall back to the repo root, where a real pm.db may be.
+  if (demoMode && !env.PM_DATA_DIR) {
+    throw new Error('DEMO_MODE needs PM_DATA_DIR set to a directory of its own.');
+  }
+  const goatCounterCode = (env.GOATCOUNTER_CODE ?? '').trim();
+  if (goatCounterCode && !GOATCOUNTER_CODE_PATTERN.test(goatCounterCode)) {
+    throw new Error('GOATCOUNTER_CODE may only contain letters, digits and hyphens.');
+  }
   const dataDir = env.PM_DATA_DIR ? path.resolve(env.PM_DATA_DIR) : path.resolve(REPO_ROOT);
   const adminPasswordGenerated = !env.ADMIN_PASSWORD;
   return {
@@ -51,5 +68,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     adminEmail: env.ADMIN_EMAIL || 'admin@officepm.local',
     adminPassword: env.ADMIN_PASSWORD || crypto.randomBytes(12).toString('base64url'),
     adminPasswordGenerated,
+    demoMode,
+    goatCounterCode,
   };
 }
