@@ -2,8 +2,8 @@
 # See "Public demo" in the README. The button there only works once this file is on main.
 #
 # The free plan has 512 MB of memory and 0.1 CPU, an ephemeral disk, spins down after 15
-# minutes without traffic and takes about a minute to wake. That suits the demo: every
-# start seeds a fresh workspace, so nothing needs to survive a restart.
+# minutes without traffic and takes about a minute to wake. That suits the demo: every cold
+# start on the ephemeral disk seeds a fresh workspace, so nothing needs to survive one.
 services:
   - type: web
     name: officepm-demo

@@ -363,19 +363,36 @@ that file is on `main`. To try the demo mode on your own machine instead:
 
 - **Sign in** as `maya.okafor@officepm.demo` with the password `demo-password`. Both are
   public by design, and so is everything you add: the data is shared by every visitor.
-- **Nightly reset.** At 03:00 UTC the whole workspace is wiped and reseeded in place, and every
-  signed-in session ends. Anything a visitor changed is gone by morning.
+- **Nightly reset.** At 03:00 UTC the whole workspace is wiped and reseeded in place, in one
+  transaction (a reseed that fails leaves the previous data), and every signed-in session ends.
+  Anything a visitor changed is gone by morning.
+- **It will not touch a real database.** At start, and again before every reset, the demo checks
+  that the database holds only demo data: any user whose email does not end in `@officepm.demo`,
+  or tickets with no demo user, and it refuses to start (or skips that night's reset) with an
+  error. It never deletes anything in that case. Still point it at a directory of its own.
 - **One minute to wake up.** On Render's free plan the service sleeps after 15 minutes without
-  traffic, and the first visit after that waits about a minute for it to start. Every start
-  seeds a fresh workspace, so the disk being ephemeral does not matter.
+  traffic, and the first visit after that waits about a minute for it to start. Every cold start
+  on an ephemeral disk seeds fresh data. A restart in the same container keeps whatever is in
+  the database until the next 03:00 reset.
 - **What is turned off,** each answered with a `403` and a message starting `demo_mode`: file
   uploads, creating users, password and department changes, ticket links and project docs
   (they would put a stranger's URL in front of the next visitor), and the GitHub webhooks.
-  Failed logins are throttled harder than usual, writes are capped per address and overall, and a
-  JSON body may be at most 64 KB.
+  Failed logins are throttled harder than usual, writes are capped per address (60 a minute) and
+  overall (120 a minute), sign-ins have a tighter budget of their own (10 a minute per address),
+  a JSON body may be at most 64 KB, the database file may not grow past 25 MB, and at most 200
+  event streams (5 per session) are open at once.
 - **Visitor counting is off.** Nothing is loaded from another site unless `GOATCOUNTER_CODE` is
   set to a [GoatCounter](https://www.goatcounter.com/) site code. Then, and only then, one
   counting script is added to the page and the Content-Security-Policy allows its two hosts.
+
+- **Known thing to verify on the first deploy: the client address behind Render.** The per-address
+  limits assume Render's proxy puts the visitor's address last in `X-Forwarded-For` (hence
+  `PM_TRUST_PROXY=1` in `render.yaml`). This could not be checked off Render, so the demo logs, at
+  startup and for its first five write requests only, whether trust is on, how many
+  `X-Forwarded-For` entries arrived, and whether the resolved address looks private (a proxy's own
+  address). No addresses are logged. Expect `entries` of 1 or more and `looks private=false` for a
+  visitor on the public internet. `entries=0`, `unknown` or `looks private=true` means every
+  visitor is being counted as one client: fix that before sharing the link.
 
 Never put real data on a demo: it is public, shared and wiped.
 
@@ -393,7 +410,7 @@ All configuration is environment variables.
 | `ADMIN_EMAIL` | `admin@officepm.local` | First-boot admin, used only while the users table is empty |
 | `ADMIN_PASSWORD` | generated, printed once | Password for that admin |
 | `PM_TRUST_PROXY` | off | `1` or `true` behind a reverse proxy, so the login throttle uses the address in `X-Forwarded-For`. Leave off when reached directly: a client could forge it. |
-| `DEMO_MODE` | off | `true` or `1` runs the public demo (see [Public demo](#public-demo)): seeds the demo workspace when the database is empty, creates no first-boot admin, refuses uploads and account changes, throttles harder, and resets every night at 03:00 UTC. Needs `PM_DATA_DIR`, so it can never wipe a database in the repository root. |
+| `DEMO_MODE` | off | `true`, `1` or `yes` (any case) runs the public demo (see [Public demo](#public-demo)): seeds the demo workspace when the database is empty, creates no first-boot admin, refuses uploads and account changes, throttles harder, and resets every night at 03:00 UTC. Needs `PM_DATA_DIR`, so it can never wipe a database in the repository root, and refuses a database that holds anything but demo data. Set to anything it does not recognise (other than `false`, `0`, `no`, `off` or empty), the server refuses to start instead of running as a normal instance. |
 | `GOATCOUNTER_CODE` | empty | A GoatCounter site code (letters, digits and hyphens). Set, the page gets the counting script and the Content-Security-Policy allows `gc.zgo.at` and `<code>.goatcounter.com`. Unset, nothing external is loaded. Anything else makes the server refuse to start. |
 | `NODE_ENV` | `development` | Only printed at startup |
 | `PM_HOST_BIND`, `PM_HOST_PORT` | `127.0.0.1`, `3000` | docker compose only: where the container is published on the host |
