@@ -348,6 +348,37 @@ event stream gains `handoff.created` (user ids and the ticket key, never emails,
 | `PRD.md` | The specification v1 was built against |
 | `ROLLOUT.md` | Hosting, Tailscale, GitHub Actions, backups, upgrades, and a user guide |
 
+## Public demo
+
+OfficePM can run as a public demo that anyone can try without installing anything.
+Set `DEMO_MODE=true` (see [Configuration](#configuration)) and the server comes up with the
+demo workspace already seeded, shows a banner that says so, and turns off what a stranger
+should not be able to do.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Abydin/officepm)
+
+The button deploys [`render.yaml`](render.yaml) to Render's free plan, and it only works once
+that file is on `main`. To try the demo mode on your own machine instead:
+`pnpm build && DEMO_MODE=true PM_DATA_DIR=$(mktemp -d) pnpm start`.
+
+- **Sign in** as `maya.okafor@officepm.demo` with the password `demo-password`. Both are
+  public by design, and so is everything you add: the data is shared by every visitor.
+- **Nightly reset.** At 03:00 UTC the whole workspace is wiped and reseeded in place, and every
+  signed-in session ends. Anything a visitor changed is gone by morning.
+- **One minute to wake up.** On Render's free plan the service sleeps after 15 minutes without
+  traffic, and the first visit after that waits about a minute for it to start. Every start
+  seeds a fresh workspace, so the disk being ephemeral does not matter.
+- **What is turned off,** each answered with a `403` and a message starting `demo_mode`: file
+  uploads, creating users, password and department changes, ticket links and project docs
+  (they would put a stranger's URL in front of the next visitor), and the GitHub webhooks.
+  Failed logins are throttled harder than usual, writes are capped per address and overall, and a
+  JSON body may be at most 64 KB.
+- **Visitor counting is off.** Nothing is loaded from another site unless `GOATCOUNTER_CODE` is
+  set to a [GoatCounter](https://www.goatcounter.com/) site code. Then, and only then, one
+  counting script is added to the page and the Content-Security-Policy allows its two hosts.
+
+Never put real data on a demo: it is public, shared and wiped.
+
 ## Configuration
 
 All configuration is environment variables.
@@ -362,6 +393,8 @@ All configuration is environment variables.
 | `ADMIN_EMAIL` | `admin@officepm.local` | First-boot admin, used only while the users table is empty |
 | `ADMIN_PASSWORD` | generated, printed once | Password for that admin |
 | `PM_TRUST_PROXY` | off | `1` or `true` behind a reverse proxy, so the login throttle uses the address in `X-Forwarded-For`. Leave off when reached directly: a client could forge it. |
+| `DEMO_MODE` | off | `true` or `1` runs the public demo (see [Public demo](#public-demo)): seeds the demo workspace when the database is empty, creates no first-boot admin, refuses uploads and account changes, throttles harder, and resets every night at 03:00 UTC. Needs `PM_DATA_DIR`, so it can never wipe a database in the repository root. |
+| `GOATCOUNTER_CODE` | empty | A GoatCounter site code (letters, digits and hyphens). Set, the page gets the counting script and the Content-Security-Policy allows `gc.zgo.at` and `<code>.goatcounter.com`. Unset, nothing external is loaded. Anything else makes the server refuse to start. |
 | `NODE_ENV` | `development` | Only printed at startup |
 | `PM_HOST_BIND`, `PM_HOST_PORT` | `127.0.0.1`, `3000` | docker compose only: where the container is published on the host |
 
