@@ -6,11 +6,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  assertDemoDatabase,
+  DEMO_LOGINS_PER_CLIENT,
   DEMO_MAX_JSON_BYTES,
+  DEMO_MAX_STREAMS,
+  DEMO_MAX_STREAMS_PER_SESSION,
   DEMO_REFUSAL,
+  DEMO_WRITES_OVERALL,
   DEMO_WRITES_PER_CLIENT,
+  DemoGuardError,
   ensureDemoWorkspace,
   isDemoBlocked,
+  limitDemoDatabaseSize,
+  looksPrivate,
   nextResetAt,
   resetDemoWorkspace,
   startDemoReset,
@@ -72,6 +80,15 @@ describe('DEMO_MODE configuration', () => {
     expect(await res.json()).toEqual({ demo: false });
     // Not the demo refusal: without DEMO_MODE the route is only behind its own login.
     expect((await app.request('/api/users', post({}))).status).toBe(401);
+  });
+
+  it('reads true, TRUE, 1 and yes, and refuses a value it does not recognise', () => {
+    const on = (v: string) => loadConfig({ PM_DATA_DIR: '/tmp/x', DEMO_MODE: v }).demoMode;
+    for (const v of ['true', 'TRUE', 'True', '1', 'yes', 'YES', ' true ']) expect(on(v)).toBe(true);
+    for (const v of ['', 'false', 'FALSE', '0', 'no', 'off']) expect(on(v)).toBe(false);
+    for (const v of ['ture', 'on', 'enabled', '2', 'y']) {
+      expect(() => on(v), v).toThrow(/DEMO_MODE is set to an unrecognised value/);
+    }
   });
 
   it('refuses to run without a data directory of its own', () => {
@@ -178,8 +195,8 @@ describe('demo mode over HTTP', () => {
 
   it('limits writes per client, and says when to retry', async () => {
     const cookie = await signIn(app);
-    // The login above was the first write.
-    for (let i = 1; i < DEMO_WRITES_PER_CLIENT; i++) {
+    // Logins have their own bucket, so the first write is the first logout.
+    for (let i = 0; i < DEMO_WRITES_PER_CLIENT; i++) {
       const res = await app.request('/api/logout', post({}, cookie));
       expect(res.status).toBe(200);
     }
@@ -189,6 +206,219 @@ describe('demo mode over HTTP', () => {
     // Reads are never counted.
     expect((await app.request('/api/config')).status).toBe(200);
   });
+});
+
+describe('demo limits', () => {
+  it('keeps logins out of the write budget, in a tighter bucket of their own', async () => {
+    const ctx = makeCtx();
+    ensureDemoWorkspace(ctx);
+    const app = createApp(ctx);
+    for (let i = 0; i < DEMO_LOGINS_PER_CLIENT; i++) await signIn(app);
+    const over = await app.request('/api/login', post({ email: MAYA, password: DEMO_PASSWORD }));
+    expect(over.status).toBe(429);
+    expect(Number(over.headers.get('retry-after'))).toBeGreaterThan(0);
+    // The logins used none of the write budget.
+    const res = await app.request('/api/logout', post({}));
+    expect(res.status).toBe(200);
+  });
+
+  it('caps writes across every client at a number the 0.1 CPU can carry', () => {
+    expect(DEMO_WRITES_OVERALL).toBeLessThanOrEqual(120);
+  });
+
+  it('caps open event streams per session and overall', async () => {
+    const ctx = makeCtx();
+    ensureDemoWorkspace(ctx);
+    const app = createApp(ctx);
+    const cookie = await signIn(app);
+    const open = () => app.request('/api/events', { headers: { cookie } });
+    const bodies = [];
+    for (let i = 0; i < DEMO_MAX_STREAMS_PER_SESSION; i++) {
+      const res = await open();
+      expect(res.status).toBe(200);
+      bodies.push(res);
+    }
+    const sixth = await open();
+    expect(sixth.status).toBe(429);
+    // Streams that end free their place.
+    await bodies[0]!.body!.cancel();
+    expect((await open()).status).toBe(200);
+    // Another session still has room, until the whole demo is full.
+    for (let i = ctx.events.size; i < DEMO_MAX_STREAMS; i++) {
+      ctx.events.subscribe(() => {}, { userId: 1, sessionId: 'filler' + i, close: () => {} });
+    }
+    const full = await app.request('/api/events', { headers: { cookie: await signIn(app) } });
+    expect(full.status).toBe(503);
+  });
+
+  it('logs how the client address resolved, as counts, for the first writes only', async () => {
+    const ctx = makeCtx({ PM_TRUST_PROXY: '1' });
+    ensureDemoWorkspace(ctx);
+    const app = createApp(ctx);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      for (let i = 0; i < 8; i++) {
+        await app.request('/api/logout', {
+          ...post({}),
+          headers: { 'content-type': 'application/json', 'x-forwarded-for': '1.2.3.4, 10.0.0.9' },
+        });
+      }
+      const lines = log.mock.calls
+        .map((c) => String(c[0]))
+        .filter((l) => l.includes('write request'));
+      expect(lines).toHaveLength(5);
+      expect(lines[0]).toContain('x-forwarded-for entries=2');
+      expect(lines[0]).toContain('looks private=true');
+      expect(lines.join('\n')).not.toMatch(/1\.2\.3\.4|10\.0\.0\.9/);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('knows a proxy-looking address from a public one', () => {
+    for (const ip of [
+      '10.1.2.3',
+      '127.0.0.1',
+      '172.16.0.1',
+      '192.168.1.1',
+      '::1',
+      'fd00::1',
+      '::ffff:10.0.0.1',
+    ]) {
+      expect(looksPrivate(ip), ip).toBe(true);
+    }
+    for (const ip of ['8.8.8.8', '172.32.0.1', '2606:4700::1111', 'unknown']) {
+      expect(looksPrivate(ip), ip).toBe(false);
+    }
+  });
+
+  it('stops the database growing past its cap', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'officepm-cap-'));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const db = openDatabase({ dataDir: dir });
+    const pages = limitDemoDatabaseSize(db, 512 * 1024);
+    expect(db.raw.pragma('max_page_count', { simple: true })).toBe(pages);
+    db.raw.exec('CREATE TABLE filler (v TEXT)');
+    const fill = db.raw.prepare('INSERT INTO filler VALUES (?)');
+    const chunk = 'x'.repeat(64 * 1024);
+    expect(() => {
+      for (let i = 0; i < 100; i++) fill.run(chunk);
+    }).toThrow(/database or disk is full/);
+    db.close();
+  });
+});
+
+describe('the guard against a real database', () => {
+  const insertUser = (ctx: AppContext, email: string) =>
+    ctx.db.raw
+      .prepare('INSERT INTO users (email, name, password) VALUES (?, ?, ?)')
+      .run(email, 'Real Person', 'x');
+
+  it('lets an empty database and a seeded demo database through', () => {
+    const ctx = makeCtx();
+    expect(() => assertDemoDatabase(ctx.db)).not.toThrow();
+    ensureDemoWorkspace(ctx);
+    expect(() => assertDemoDatabase(ctx.db)).not.toThrow();
+  });
+
+  it('makes boot throw on a database with a user outside @officepm.demo', () => {
+    const ctx = makeCtx();
+    insertUser(ctx, 'boss@realcompany.com');
+    expect(() => ensureDemoWorkspace(ctx)).toThrow(DemoGuardError);
+    expect(count(ctx, 'tickets')).toBe(0);
+    expect(count(ctx, 'users')).toBe(1);
+  });
+
+  it('makes boot throw on tickets with no demo user, and on a mix', () => {
+    const ctx = makeCtx();
+    ensureDemoWorkspace(ctx);
+    insertUser(ctx, 'boss@realcompany.com');
+    expect(() => ensureDemoWorkspace(ctx)).toThrow(/not demo data/);
+
+    const orphan = makeCtx();
+    ensureDemoWorkspace(orphan);
+    orphan.db.raw.pragma('foreign_keys = OFF');
+    orphan.db.raw.prepare('DELETE FROM users').run();
+    expect(() => ensureDemoWorkspace(orphan)).toThrow(DemoGuardError);
+  });
+
+  it('makes the reset delete nothing in a populated non-demo database', () => {
+    const ctx = makeCtx();
+    ensureDemoWorkspace(ctx);
+    insertUser(ctx, 'boss@realcompany.com');
+    const before = {
+      tickets: count(ctx, 'tickets'),
+      users: count(ctx, 'users'),
+      comments: count(ctx, 'comments'),
+    };
+    expect(() => resetDemoWorkspace(ctx)).toThrow(DemoGuardError);
+    expect(count(ctx, 'tickets')).toBe(before.tickets);
+    expect(count(ctx, 'users')).toBe(before.users);
+    expect(count(ctx, 'comments')).toBe(before.comments);
+    expect(
+      ctx.db.raw.prepare('SELECT 1 FROM users WHERE email = ?').get('boss@realcompany.com'),
+    ).toBeTruthy();
+  });
+
+  it('survives the nightly timer: a refused reset logs an error and keeps the data', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-03-10T02:59:00Z'));
+      const ctx = makeCtx();
+      ensureDemoWorkspace(ctx);
+      insertUser(ctx, 'boss@realcompany.com');
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const stop = startDemoReset(ctx);
+      vi.advanceTimersByTime(90_000);
+      stop();
+      expect(err).toHaveBeenCalled();
+      err.mockRestore();
+      expect(count(ctx, 'tickets')).toBe(TICKETS.length);
+      expect(count(ctx, 'users')).toBeGreaterThan(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses to start the real entry point on a database that is not demo data', async () => {
+    execFileSync(
+      path.join(REPO_ROOT, 'node_modules', '.bin', 'tsc'),
+      ['-b', 'packages/shared', 'apps/server'],
+      { cwd: REPO_ROOT, stdio: 'pipe' },
+    );
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'officepm-demoguard-'));
+    cleanups.push(() => fs.rmSync(dataDir, { recursive: true, force: true }));
+    const real = openDatabase({ dataDir });
+    real.raw
+      .prepare('INSERT INTO users (email, name, password) VALUES (?, ?, ?)')
+      .run('boss@realcompany.com', 'Real Person', 'x');
+    real.close();
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PORT: '0',
+      PM_DATA_DIR: dataDir,
+      NODE_ENV: 'test',
+      DEMO_MODE: 'yes',
+    };
+    const child = spawn(process.execPath, [MAIN], { cwd: REPO_ROOT, env });
+    cleanups.push(() => child.kill('SIGKILL'));
+    let out = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (out += d));
+    const code = await new Promise<number | null>((resolve) => child.on('exit', resolve));
+    expect(code).toBe(1);
+    expect(out).toContain('DEMO_MODE refused');
+    expect(out).not.toContain('listening on');
+    const after = openDatabase({ dataDir });
+    const rows = after.raw.prepare('SELECT email FROM users').all();
+    const boards = after.raw.prepare('SELECT COUNT(*) AS n FROM board_settings').get() as {
+      n: number;
+    };
+    after.close();
+    expect(rows).toEqual([{ email: 'boss@realcompany.com' }]);
+    // Nothing else was written before the guard ran: not even the board rows boot normally adds.
+    expect(boards.n).toBe(0);
+  }, 60_000);
 });
 
 describe('the nightly reset', () => {
@@ -232,6 +462,20 @@ describe('the nightly reset', () => {
     );
     expect(created.status).toBe(201);
     expect(count(ctx, 'tickets')).toBe(TICKETS.length + 1);
+  });
+
+  it('rolls back to yesterday when the reseed fails, instead of leaving an empty workspace', () => {
+    const ctx = makeCtx();
+    ensureDemoWorkspace(ctx);
+    ctx.db.raw.prepare("UPDATE comments SET body = 'kept' WHERE rowid = 1").run();
+    const real = ctx.projects;
+    // A registry with no boards: the wipe goes through, then the seed refuses.
+    ctx.projects = { allBoards: () => [], config: real.config } as unknown as typeof real;
+    expect(() => resetDemoWorkspace(ctx)).toThrow();
+    ctx.projects = real;
+    expect(count(ctx, 'tickets')).toBe(TICKETS.length);
+    expect(count(ctx, 'users')).toBeGreaterThan(1);
+    expect(ctx.db.raw.prepare("SELECT 1 FROM comments WHERE body = 'kept'").get()).toBeTruthy();
   });
 
   it('finds the next 03:00 UTC strictly after now', () => {

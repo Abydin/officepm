@@ -31,6 +31,20 @@ export interface Config {
 /** A DNS label: what a GoatCounter site code is. Strict, because the value goes into served HTML. */
 export const GOATCOUNTER_CODE_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
 
+/**
+ * DEMO_MODE: true, 1 or yes (any case) turns the demo on; unset, empty, false, 0, no or off leaves
+ * it off. Anything else is a typo, and silently running it as a normal instance is not what
+ * the operator meant, so it stops the server instead.
+ */
+export function parseDemoMode(value: string | undefined): boolean {
+  const v = (value ?? '').trim().toLowerCase();
+  if (v === '' || v === 'false' || v === '0' || v === 'no' || v === 'off') return false;
+  if (v === 'true' || v === '1' || v === 'yes') return true;
+  throw new Error(
+    'DEMO_MODE is set to an unrecognised value. Use true, 1 or yes to run the demo, or leave it unset.',
+  );
+}
+
 // apps/server/{src,dist}/config.(ts|js): three levels up is the repo root.
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
@@ -41,7 +55,7 @@ const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
  * DEMO_MODE and GOATCOUNTER_CODE belong to the hosted demo and are off when unset.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const demoMode = env.DEMO_MODE === '1' || env.DEMO_MODE === 'true';
+  const demoMode = parseDemoMode(env.DEMO_MODE);
   // The demo wipes its database nightly, so it must never fall back to the repo root, where a real pm.db may be.
   if (demoMode && !env.PM_DATA_DIR) {
     throw new Error('DEMO_MODE needs PM_DATA_DIR set to a directory of its own.');

@@ -2,7 +2,12 @@ import fs from 'node:fs';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { bootstrapAdmin, seedBoards, startSessionCleanup } from './bootstrap.js';
-import { ensureDemoWorkspace, startDemoReset } from './demo.js';
+import {
+  assertDemoDatabase,
+  ensureDemoWorkspace,
+  limitDemoDatabaseSize,
+  startDemoReset,
+} from './demo.js';
 import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { openDatabase } from './db/index.js';
@@ -37,6 +42,11 @@ async function main(): Promise<void> {
   fs.mkdirSync(config.uploadsDir + '/projects', { recursive: true });
   fs.mkdirSync(config.uploadsDir + '/tickets', { recursive: true });
   const db = openDatabase({ dataDir: config.dataDir });
+  // Before anything writes (seedBoards below does): a demo must never touch a real database.
+  if (config.demoMode) {
+    assertDemoDatabase(db);
+    limitDemoDatabaseSize(db);
+  }
 
   const ctx: AppContext = {
     config,
@@ -52,6 +62,10 @@ async function main(): Promise<void> {
     ensureDemoWorkspace(ctx);
     startDemoReset(ctx);
     console.log('[OfficePM] DEMO_MODE on: public demo, reset every night at 03:00 UTC.');
+    console.log(
+      `[OfficePM] demo: PM_TRUST_PROXY=${config.trustProxy ? 'on' : 'off'}. The first write requests log ` +
+        'how many X-Forwarded-For entries arrived, to check the per-client limits see real visitors.',
+    );
   } else {
     createdAdmin = await bootstrapAdmin(ctx);
   }

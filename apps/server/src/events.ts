@@ -31,6 +31,18 @@ export class EventBus {
     };
   }
 
+  /** How many streams are open. */
+  get size(): number {
+    return this.listeners.size;
+  }
+
+  /** Open streams opened with one session. */
+  countForSession(sessionId: string): number {
+    let n = 0;
+    for (const sub of this.listeners) if (sub.owner?.sessionId === sessionId) n++;
+    return n;
+  }
+
   /** Ends every stream, e.g. after the demo workspace is reset and every session with it. */
   closeAll(): number {
     return this.closeWhere(() => true);
