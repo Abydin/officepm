@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import { useAppConfig } from './api';
+import { DemoLinks } from './links';
 
 /** The page reserves this much room at the top (index.css reads it), so the banner never covers the app. */
 const HEIGHT_VAR = '--demo-banner-h';
@@ -38,12 +39,13 @@ export function DemoBanner() {
       ref={ref}
       role="note"
       aria-label="Public demo"
-      className="fixed inset-x-0 top-0 z-40 flex items-center justify-center gap-2 border-b border-line bg-raised px-4 py-1.5 text-center text-[13px] text-fg"
+      className="fixed inset-x-0 top-0 z-40 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 border-b border-line bg-raised px-4 py-1.5 text-center text-[13px] text-fg"
     >
       <span className="rounded bg-accent px-1.5 text-[11px] font-bold tracking-wide text-accent-ink uppercase">
         Demo
       </span>
       <span>{DEMO_BANNER_TEXT}</span>
+      <DemoLinks />
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { ErrorAlert } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DEMO_LOGIN_HINT, DemoLinks } from '@/features/demo/links';
+import { useAppConfig } from '@/features/demo/api';
 import { errorMessage } from '@/lib/api';
 import { useLogin, useSession } from './api';
 
@@ -19,6 +21,8 @@ function destination(state: unknown): string {
 export function LoginPage() {
   const session = useSession();
   const login = useLogin();
+  // Only the public demo says how to get in and where to learn more; a real install shows neither.
+  const demo = useAppConfig().data?.demo === true;
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,6 +78,12 @@ export function LoginPage() {
         <Button type="submit" variant="primary" className="w-full" disabled={login.isPending}>
           {login.isPending ? 'Signing in...' : 'Sign in'}
         </Button>
+        {demo && (
+          <div className="mt-4 text-center text-[13px] text-dim">
+            <p className="m-0 mb-1.5">{DEMO_LOGIN_HINT}</p>
+            <DemoLinks />
+          </div>
+        )}
       </form>
     </main>
   );
