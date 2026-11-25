@@ -370,8 +370,8 @@ that file is on `main`. To try the demo mode on your own machine instead:
   that the database holds only demo data: any user whose email does not end in `@officepm.demo`,
   or tickets with no demo user, and it refuses to start (or skips that night's reset) with an
   error. It never deletes anything in that case. Still point it at a directory of its own.
-- **One minute to wake up.** On Render's free plan the service sleeps after 15 minutes without
-  traffic, and the first visit after that waits about a minute for it to start. Every cold start
+- **Up to two minutes to wake up.** On Render's free plan the service sleeps after 15 minutes without
+  traffic, and the first visit after that waits up to two minutes for it to start. Every cold start
   on an ephemeral disk seeds fresh data. A restart in the same container keeps whatever is in
   the database until the next 03:00 reset.
 - **What is turned off,** each answered with a `403` and a message starting `demo_mode`: file

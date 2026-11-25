@@ -323,7 +323,7 @@ describe('the guard against a real database', () => {
 
   it('makes boot throw on a database with a user outside @officepm.demo', () => {
     const ctx = makeCtx();
-    insertUser(ctx, 'boss@realcompany.com');
+    insertUser(ctx, 'boss@example.com');
     expect(() => ensureDemoWorkspace(ctx)).toThrow(DemoGuardError);
     expect(count(ctx, 'tickets')).toBe(0);
     expect(count(ctx, 'users')).toBe(1);
@@ -332,7 +332,7 @@ describe('the guard against a real database', () => {
   it('makes boot throw on tickets with no demo user, and on a mix', () => {
     const ctx = makeCtx();
     ensureDemoWorkspace(ctx);
-    insertUser(ctx, 'boss@realcompany.com');
+    insertUser(ctx, 'boss@example.com');
     expect(() => ensureDemoWorkspace(ctx)).toThrow(/not demo data/);
 
     const orphan = makeCtx();
@@ -345,7 +345,7 @@ describe('the guard against a real database', () => {
   it('makes the reset delete nothing in a populated non-demo database', () => {
     const ctx = makeCtx();
     ensureDemoWorkspace(ctx);
-    insertUser(ctx, 'boss@realcompany.com');
+    insertUser(ctx, 'boss@example.com');
     const before = {
       tickets: count(ctx, 'tickets'),
       users: count(ctx, 'users'),
@@ -356,7 +356,7 @@ describe('the guard against a real database', () => {
     expect(count(ctx, 'users')).toBe(before.users);
     expect(count(ctx, 'comments')).toBe(before.comments);
     expect(
-      ctx.db.raw.prepare('SELECT 1 FROM users WHERE email = ?').get('boss@realcompany.com'),
+      ctx.db.raw.prepare('SELECT 1 FROM users WHERE email = ?').get('boss@example.com'),
     ).toBeTruthy();
   });
 
@@ -366,7 +366,7 @@ describe('the guard against a real database', () => {
       vi.setSystemTime(new Date('2026-03-10T02:59:00Z'));
       const ctx = makeCtx();
       ensureDemoWorkspace(ctx);
-      insertUser(ctx, 'boss@realcompany.com');
+      insertUser(ctx, 'boss@example.com');
       const err = vi.spyOn(console, 'error').mockImplementation(() => {});
       const stop = startDemoReset(ctx);
       vi.advanceTimersByTime(90_000);
@@ -391,7 +391,7 @@ describe('the guard against a real database', () => {
     const real = openDatabase({ dataDir });
     real.raw
       .prepare('INSERT INTO users (email, name, password) VALUES (?, ?, ?)')
-      .run('boss@realcompany.com', 'Real Person', 'x');
+      .run('boss@example.com', 'Real Person', 'x');
     real.close();
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -415,7 +415,7 @@ describe('the guard against a real database', () => {
       n: number;
     };
     after.close();
-    expect(rows).toEqual([{ email: 'boss@realcompany.com' }]);
+    expect(rows).toEqual([{ email: 'boss@example.com' }]);
     // Nothing else was written before the guard ran: not even the board rows boot normally adds.
     expect(boards.n).toBe(0);
   }, 60_000);

@@ -25,7 +25,7 @@ export const DEMO_LOGIN_THROTTLE: Partial<ThrottleOptions> = {
 };
 
 const WRITE_WINDOW_MS = 60_000;
-/** Writes (every non-GET request, logins included) per client address per minute. */
+/** Writes (every non-GET request except logins, which have their own buckets) per client address per minute. */
 export const DEMO_WRITES_PER_CLIENT = 60;
 /** Writes per minute across all clients, so a crowd of addresses cannot starve the 0.1 CPU. */
 export const DEMO_WRITES_OVERALL = 120;
