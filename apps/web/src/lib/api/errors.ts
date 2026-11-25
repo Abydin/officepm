@@ -1,3 +1,5 @@
+import { PASSWORD_CHANGE_REQUIRED } from '@officepm/shared';
+
 /**
  * - `http`: the server answered with a non-2xx status.
  * - `network`: no answer at all (offline, server down, request aborted by a proxy).
@@ -20,6 +22,11 @@ export class ApiError extends Error {
 
   get isUnauthorized(): boolean {
     return this.kind === 'http' && this.status === 401;
+  }
+
+  /** The server wants this person to choose a new password before it answers anything else. */
+  get isPasswordChangeRequired(): boolean {
+    return this.kind === 'http' && this.status === 403 && this.message === PASSWORD_CHANGE_REQUIRED;
   }
 }
 

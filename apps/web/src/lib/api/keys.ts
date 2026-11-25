@@ -35,6 +35,12 @@ export const qk = {
     pipeline: (key: string) => ['tickets', 'detail', key, 'pipeline'] as const,
   },
   users: ['users'] as const,
+  // Invite links: the admin's list, and what the public accept screen shows for one token.
+  invites: {
+    all: ['invites'] as const,
+    list: () => ['invites', 'list'] as const,
+    preview: (token: string) => ['invites', 'preview', token] as const,
+  },
   // Everyone's name and department, for the handoff pickers. Open to any signed-in user.
   people: ['people'] as const,
   // Handoffs addressed to the signed-in person that they have not read yet.

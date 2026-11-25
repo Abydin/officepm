@@ -26,5 +26,8 @@ export function createQueryClient(
   // Any 401 means the session is gone (expired, or the server restarted): drop it
   // and the auth gate sends the person to the login page.
   api.setUnauthorizedHandler(() => client.setQueryData(qk.session, null));
+  // A 403 password_change_required means the session now carries that flag (an admin reset the
+  // password while the page was open): ask again, and the auth gate shows the change screen.
+  api.setPasswordChangeHandler(() => void client.invalidateQueries({ queryKey: qk.session }));
   return client;
 }

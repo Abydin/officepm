@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { Inbox, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { Inbox, KeyRound, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { useState } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import { Avatar } from '@/components/avatar';
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { useLogout } from '@/features/auth/api';
+import { ChangePasswordDialog } from '@/features/auth/change-password-dialog';
 import { useUser } from '@/features/auth/user-context';
 import { unreadLabel, useUnreadHandoffCount } from '@/features/handoffs/handoff-inbox';
 import { projectsQuery } from '@/features/projects/api';
@@ -26,6 +28,7 @@ export function Topbar({
   const projects = useQuery(projectsQuery);
   const logout = useLogout();
   const unread = useUnreadHandoffCount();
+  const [changingPassword, setChangingPassword] = useState(false);
   const { theme, toggle } = useTheme();
   const match = useMatch('/projects/:slug/*');
   const current = match?.params.slug ?? '';
@@ -149,6 +152,15 @@ export function Topbar({
       <Button
         variant="ghost"
         size="icon"
+        aria-label="Change password"
+        title="Change password"
+        onClick={() => setChangingPassword(true)}
+      >
+        <KeyRound className="size-4" aria-hidden="true" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
         aria-label="Sign out"
         title={`Sign out ${user.email}`}
         disabled={logout.isPending}
@@ -156,6 +168,7 @@ export function Topbar({
       >
         <LogOut className="size-4" aria-hidden="true" />
       </Button>
+      {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
     </header>
   );
 }

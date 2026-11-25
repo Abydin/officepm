@@ -1,4 +1,5 @@
 import { createHashRouter, createMemoryRouter, Navigate, type RouteObject } from 'react-router';
+import { InvitePage } from '@/features/auth/invite-page';
 import { LoginPage } from '@/features/auth/login-page';
 import { MyTicketsPage } from '@/features/mine/my-tickets-page';
 import { OverviewPage } from '@/features/overview/overview-page';
@@ -21,6 +22,8 @@ import { RouteError } from './route-error';
  */
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage />, errorElement: <RouteError /> },
+  // Public: the invite link opens here, whoever is (or is not) signed in.
+  { path: '/invite/:token', element: <InvitePage />, errorElement: <RouteError /> },
   {
     element: <RequireAuth />,
     errorElement: <RouteError />,

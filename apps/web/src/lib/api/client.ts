@@ -22,6 +22,8 @@ export interface ApiClientOptions {
   fetch?: typeof fetch;
   /** Called for any 401, so the app can drop its session and show the login page. */
   onUnauthorized?: (error: ApiError) => void;
+  /** Called for a 403 password_change_required, so the app can show the screen that fixes it. */
+  onPasswordChangeRequired?: (error: ApiError) => void;
 }
 
 export interface ApiClient {
@@ -56,6 +58,8 @@ export interface ApiClient {
   ): Promise<T>;
   /** Replaces the 401 handler. The app installs it once the query client exists. */
   setUnauthorizedHandler(handler: ((error: ApiError) => void) | undefined): void;
+  /** Replaces the password-change handler, the same way. */
+  setPasswordChangeHandler(handler: ((error: ApiError) => void) | undefined): void;
 }
 
 function withQuery(path: string, query: QueryParams | undefined): string {
@@ -81,6 +85,7 @@ async function readJson(res: Response): Promise<{ ok: true; value: unknown } | {
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const baseUrl = options.baseUrl ?? '';
   let onUnauthorized = options.onUnauthorized;
+  let onPasswordChange = options.onPasswordChangeRequired;
 
   async function request<T>(path: string, opts: RequestOptions<T>): Promise<T> {
     const method = opts.method ?? 'GET';
@@ -120,6 +125,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         body?.success ? body.data.error : 'HTTP ' + res.status,
       );
       if (error.isUnauthorized) onUnauthorized?.(error);
+      if (error.isPasswordChangeRequired) onPasswordChange?.(error);
       throw error;
     }
 
@@ -154,6 +160,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     delete: (path, schema, o) => request(path, { ...o, schema, method: 'DELETE' }),
     setUnauthorizedHandler(handler) {
       onUnauthorized = handler;
+    },
+    setPasswordChangeHandler(handler) {
+      onPasswordChange = handler;
     },
   };
 }
