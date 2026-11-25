@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ImportSection } from './import-section';
 import { InviteSection } from './invites-section';
 import { PipelineSettings } from '@/features/pipeline/pipeline-settings';
 import { useUser } from '@/features/auth/user-context';
@@ -418,6 +419,7 @@ function AdminContent() {
       </section>
       <CreateUserForm onCreated={(name) => setNotice(`Created ${name}.`)} />
       <InviteSection />
+      <ImportSection />
       <PipelineSettings />
       <BoardsTable />
       {resetting && (
