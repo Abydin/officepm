@@ -15,7 +15,14 @@ import { useUser } from '@/features/auth/user-context';
 import { CommitInput } from '@/features/tickets/commit-fields';
 import { usersQuery } from '@/features/tickets/api';
 import { errorMessage } from '@/lib/api';
-import { projectsConfigQuery, useCreateUser, useResetPassword, useSetDepartment } from './api';
+import {
+  projectsConfigQuery,
+  useCreateUser,
+  useResetPassword,
+  useSetActive,
+  useSetDepartment,
+} from './api';
+import { InlineConfirm } from './inline-confirm';
 
 const th = 'px-3 py-2 font-medium';
 const td = 'px-3 py-2';
@@ -266,7 +273,9 @@ function BoardsTable() {
 
 function AdminContent() {
   const users = useQuery(usersQuery);
+  const me = useUser();
   const setDepartment = useSetDepartment();
+  const setActive = useSetActive();
   // Bumped when a change is refused, so the box shows the saved value again.
   const [version, setVersion] = useState(0);
   const departments = [
@@ -288,6 +297,9 @@ function AdminContent() {
         {users.isError && <ErrorAlert>{errorMessage(users.error)}</ErrorAlert>}
         {setDepartment.isError && (
           <ErrorAlert className="mb-3">{errorMessage(setDepartment.error)}</ErrorAlert>
+        )}
+        {setActive.isError && (
+          <ErrorAlert className="mb-3">{errorMessage(setActive.error)}</ErrorAlert>
         )}
         {users.isPending && <Skeleton className="h-24" />}
         <datalist id="department-suggestions">
@@ -311,6 +323,9 @@ function AdminContent() {
                   </th>
                   <th scope="col" className={th}>
                     Role
+                  </th>
+                  <th scope="col" className={th}>
+                    Status
                   </th>
                   <th scope="col" className={th}>
                     <span className="sr-only">Actions</span>
@@ -342,17 +357,57 @@ function AdminContent() {
                     <td className={td}>
                       {u.is_admin ? <Badge>Admin</Badge> : <span className="text-dim">Member</span>}
                     </td>
+                    <td className={td}>
+                      {u.deactivated_at ? (
+                        <Badge className="border-err text-fg">Deactivated</Badge>
+                      ) : (
+                        <span className="text-dim">Active</span>
+                      )}
+                      {!u.deactivated_at && u.must_change_password ? (
+                        <span className="block text-xs text-dim">Must choose a password</span>
+                      ) : null}
+                    </td>
                     <td className={`${td} text-right`}>
-                      <Button
-                        size="sm"
-                        aria-label={`Reset password for ${u.name}`}
-                        onClick={() => {
-                          setNotice('');
-                          setResetting(u);
-                        }}
-                      >
-                        Reset password
-                      </Button>
+                      <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          aria-label={`Reset password for ${u.name}`}
+                          onClick={() => {
+                            setNotice('');
+                            setResetting(u);
+                          }}
+                        >
+                          Reset password
+                        </Button>
+                        {/* The server refuses your own account; do not offer what it will refuse. */}
+                        {u.id !== me.id &&
+                          (u.deactivated_at ? (
+                            <InlineConfirm
+                              key="reactivate"
+                              action="Reactivate"
+                              name={u.name}
+                              confirmLabel="Yes, reactivate"
+                              pending={setActive.isPending}
+                              onConfirm={() => {
+                                setNotice('');
+                                setActive.mutate({ id: u.id, active: true });
+                              }}
+                            />
+                          ) : (
+                            <InlineConfirm
+                              key="deactivate"
+                              action="Deactivate"
+                              name={u.name}
+                              confirmLabel="Yes, deactivate"
+                              variant="danger"
+                              pending={setActive.isPending}
+                              onConfirm={() => {
+                                setNotice('');
+                                setActive.mutate({ id: u.id, active: false });
+                              }}
+                            />
+                          ))}
+                      </span>
                     </td>
                   </tr>
                 ))}

@@ -31,10 +31,22 @@ export function usePeople(tickets: readonly Ticket[] | undefined): ComboOption[]
       byEmail.set(value, { value, label: label || personName(value), hint: value });
     };
     add(me.email, me.name);
-    for (const u of admin.data ?? []) add(u.email, u.name);
+    // A deactivated person is not offered for new work, but one who is already on a ticket in hand
+    // stays resolvable (with a marker), so the ticket still shows who it belongs to.
+    const deactivated = new Map<string, string>();
+    for (const u of admin.data ?? []) {
+      if (u.deactivated_at) deactivated.set(u.email, u.name);
+      else add(u.email, u.name);
+    }
+    const onTicket = (value: string | null | undefined) => {
+      if (!value) return;
+      const gone = deactivated.get(value);
+      if (gone) add(value, `${gone} (deactivated)`);
+      else add(value);
+    };
     for (const t of tickets ?? []) {
-      add(t.assignee);
-      add(t.qa_owner);
+      onTicket(t.assignee);
+      onTicket(t.qa_owner);
     }
     return [...byEmail.values()].sort((a, b) => a.label.localeCompare(b.label));
   }, [me.email, me.name, admin.data, tickets]);
