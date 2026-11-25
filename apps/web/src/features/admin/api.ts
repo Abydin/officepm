@@ -1,8 +1,14 @@
 import {
   CreatedUserSchema,
+  DeactivationResultSchema,
   DepartmentResultSchema,
+  ImportResultSchema,
+  InviteCreatedSchema,
+  InviteListSchema,
   OkSchema,
   ProjectsConfigSchema,
+  type ImportRequest,
+  type InviteCreate,
   type PasswordReset,
   type UserCreate,
 } from '@officepm/shared';
@@ -43,5 +49,56 @@ export function useResetPassword() {
   return useMutation({
     mutationFn: ({ id, ...body }: PasswordReset & { id: number }) =>
       api.patch(`/api/users/${id}/password`, OkSchema, body),
+  });
+}
+
+/** Admin only. Every invite, newest first, with its status. Tokens are never in it. */
+export const invitesQuery = queryOptions({
+  queryKey: qk.invites.list(),
+  queryFn: ({ signal }) => api.get('/api/invites', InviteListSchema, { signal }),
+});
+
+/** The answer holds the invite link, the only copy of the token: show it once. */
+export function useCreateInvite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: InviteCreate) => api.post('/api/invites', InviteCreatedSchema, input),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.invites.list() }),
+  });
+}
+
+export function useRevokeInvite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/invites/${encodeURIComponent(id)}`, OkSchema),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.invites.list() }),
+  });
+}
+
+/** `dry_run: true` only checks; `false` makes the invites and returns their links. */
+export function useImportStaff() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ImportRequest) =>
+      api.post('/api/invites/import', ImportResultSchema, input),
+    onSuccess: (result) => {
+      if (!result.dry_run) void queryClient.invalidateQueries({ queryKey: qk.invites.list() });
+    },
+  });
+}
+
+/** Deactivating ends the person's sessions and drops them from the assignee pickers. */
+export function useSetActive() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: number; active: boolean }) =>
+      api.post(
+        `/api/users/${id}/${active ? 'reactivate' : 'deactivate'}`,
+        DeactivationResultSchema,
+      ),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.users });
+      void queryClient.invalidateQueries({ queryKey: qk.people });
+    },
   });
 }

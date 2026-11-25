@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { InviteSection } from './invites-section';
 import { PipelineSettings } from '@/features/pipeline/pipeline-settings';
 import { useUser } from '@/features/auth/user-context';
 import { CommitInput } from '@/features/tickets/commit-fields';
@@ -59,6 +60,10 @@ function CreateUserForm({ onCreated }: { onCreated: (name: string) => void }) {
       <h2 id="create-user" className="m-0 mb-3 text-[15px] font-semibold">
         Create user
       </h2>
+      <p className="mt-0 mb-3 text-dim">
+        You choose the password and pass it on. They will be asked to pick their own when they sign
+        in. To avoid sending a password at all, invite them by link below.
+      </p>
       <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
         <div className="min-w-48 flex-1">
           <label htmlFor="new-user-email" className="mb-1 block text-xs text-dim">
@@ -357,6 +362,7 @@ function AdminContent() {
         )}
       </section>
       <CreateUserForm onCreated={(name) => setNotice(`Created ${name}.`)} />
+      <InviteSection />
       <PipelineSettings />
       <BoardsTable />
       {resetting && (

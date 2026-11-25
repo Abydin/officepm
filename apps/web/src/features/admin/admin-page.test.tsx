@@ -29,6 +29,8 @@ const routes = (extra: Record<string, unknown> = {}) => ({
   'GET /api/admin/projects': config,
   // The feature pipeline section lists projects; none here keeps these tests about users and boards.
   'GET /api/projects': [],
+  // The invite section lists invites; none keeps these tests about users and boards.
+  'GET /api/invites': [],
   ...extra,
 });
 
