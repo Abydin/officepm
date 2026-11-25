@@ -48,7 +48,8 @@ export const DEMO_EMAIL_SUFFIX = '@officepm.demo';
 
 /**
  * What the demo refuses, by path, for any method that writes. Three kinds:
- * uploads (attachments), account changes (create user, set a password, set a department)
+ * uploads (attachments), account changes (create user, set a password, set a department,
+ * deactivate or reactivate, change your own password, invite links and the CSV import)
  * and anything that puts an arbitrary URL in front of the next visitor (ticket links,
  * project docs), which a public demo would otherwise relay. The GitHub webhooks go too:
  * they are for CI, not visitors. There is no user delete, role change, webhook token
@@ -57,7 +58,9 @@ export const DEMO_EMAIL_SUFFIX = '@officepm.demo';
 const BLOCKED: readonly RegExp[] = [
   /^\/api\/(projects|tickets)\/[^/]+\/files(\/|$)/,
   /^\/api\/users\/?$/,
-  /^\/api\/users\/[^/]+\/(password|department)\/?$/,
+  /^\/api\/users\/[^/]+\/(password|department|deactivate|reactivate)\/?$/,
+  /^\/api\/me\/password\/?$/,
+  /^\/api\/invites(\/|$)/,
   /^\/api\/github(\/|$)/,
   /^\/api\/tickets\/[^/]+\/links(\/|$)/,
   /^\/api\/projects\/[^/]+\/docs(\/|$)/,

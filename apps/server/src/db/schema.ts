@@ -19,7 +19,28 @@ export const users = sqliteTable('users', {
   created_at: text('created_at').default(now),
   // Added after v1 by migration 0001. Optional team name, set by an admin.
   department: text('department'),
+  // Added by migration 0005. 1 until the person picks a password of their own; NULL counts as 0.
+  must_change_password: integer('must_change_password').default(0),
+  // Added by migration 0005. When an admin deactivated the account; NULL while it is active.
+  deactivated_at: text('deactivated_at'),
 });
+
+export const invites = sqliteTable(
+  'invites',
+  {
+    id: text('id').primaryKey(),
+    // SHA-256 (hex) of the token. The token itself is never stored.
+    token_hash: text('token_hash').notNull().unique(),
+    email: text('email').notNull(),
+    name: text('name').notNull(),
+    is_admin: integer('is_admin').notNull().default(0),
+    created_by: integer('created_by'),
+    created_at: text('created_at').default(now),
+    expires_at: text('expires_at').notNull(),
+    used_at: text('used_at'),
+  },
+  (t) => [index('idx_invites_email').on(t.email)],
+);
 
 export const sessions = sqliteTable('sessions', {
   id: text('id').primaryKey(),

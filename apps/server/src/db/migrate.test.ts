@@ -20,6 +20,7 @@ describe('runMigrations', () => {
       '0002-participants',
       '0003-subtickets',
       '0004-pipeline',
+      '0005-staff-accounts',
     ];
     expect(runMigrations(db)).toEqual(all);
     expect(MIGRATIONS.map((m) => m.name)).toEqual(all);
@@ -31,6 +32,7 @@ describe('runMigrations', () => {
       { name: '0002-participants' },
       { name: '0003-subtickets' },
       { name: '0004-pipeline' },
+      { name: '0005-staff-accounts' },
     ]);
   });
 
@@ -117,7 +119,11 @@ describe('runMigrations', () => {
         "INSERT INTO ticket_participants (ticket_key, user_id, role, added_by) VALUES ('K-1', 2, 'PM', 1)",
       ).run();
       expect(cols('tickets')).not.toContain('subticket_of');
-      expect(runMigrations(db)).toEqual(['0003-subtickets', '0004-pipeline']);
+      expect(runMigrations(db)).toEqual([
+        '0003-subtickets',
+        '0004-pipeline',
+        '0005-staff-accounts',
+      ]);
       expect(db.prepare('SELECT key, title, subticket_of FROM tickets').all()).toEqual([
         { key: 'K-1', title: 't', subticket_of: null },
       ]);
@@ -245,7 +251,7 @@ describe('runMigrations', () => {
         "INSERT INTO ticket_handoffs (id, ticket_key, decision, from_status, to_status, from_email, from_name) VALUES ('h1','K-1','approve','Backlog','Done','a@b.c','A')",
       ).run();
       expect(cols('tickets')).not.toContain('phase');
-      expect(runMigrations(db)).toEqual(['0004-pipeline']);
+      expect(runMigrations(db)).toEqual(['0004-pipeline', '0005-staff-accounts']);
       expect(db.prepare('SELECT key, title, phase FROM tickets').all()).toEqual([
         { key: 'K-1', title: 't', phase: null },
       ]);

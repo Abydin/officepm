@@ -166,10 +166,11 @@ export const V2_ADDITIONS = {
     'ticket_participants',
     'handoff_recipients',
     'project_phases',
+    'invites',
   ],
   /** New nullable columns on v1 tables. */
   columns: {
-    users: ['department'], // Newest first: withoutAddedColumns peels them off the end of the CREATE text one by one.
+    users: ['deactivated_at', 'must_change_password', 'department'], // Newest first: withoutAddedColumns peels them off the end of the CREATE text one by one.
     tickets: ['department', 'phase', 'subticket_of'],
   } as Record<string, string[]>,
 };
@@ -185,7 +186,9 @@ const isExtra = (name: string) =>
 function withoutAddedColumns(table: string, sql: string | null): string | null {
   let out = sql;
   for (const column of V2_ADDITIONS.columns[table] ?? []) {
-    out = out && out.replace(new RegExp(`,\\s*${column}\\s+\\w+(?=\\s*\\)\\s*$)`), '');
+    out =
+      out &&
+      out.replace(new RegExp(`,\\s*${column}\\s+\\w+(?:\\s+DEFAULT\\s+\\w+)?(?=\\s*\\)\\s*$)`), '');
   }
   return out;
 }

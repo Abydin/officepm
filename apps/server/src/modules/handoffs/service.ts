@@ -214,12 +214,19 @@ export function createHandoffService(ctx: AppContext, comments: CommentService) 
         assigneeId === null
           ? undefined
           : orm
-              .select({ id: users.id, email: users.email, name: users.name })
+              .select({
+                id: users.id,
+                email: users.email,
+                name: users.name,
+                deactivated_at: users.deactivated_at,
+              })
               .from(users)
               .where(eq(users.id, assigneeId))
               .get();
       if (assigneeId !== null && !assignee)
         throw badRequest('assignee_id must be an existing user');
+      // A deactivated person keeps the tickets they have but is not handed new ones.
+      if (assignee?.deactivated_at) throw badRequest('assignee_id is a deactivated user');
 
       const requestedDepartment = text(b.department);
       let department: string | null = null;

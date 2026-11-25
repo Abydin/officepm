@@ -20,6 +20,18 @@ export function clientIp(c: Context, trustProxy: boolean): string {
   }
 }
 
+/** Sets the session cookie on a response. Login and invite accept both sign the person in with it. */
+export function setSessionCookie(c: Context, sid: string, expires: Date): void {
+  setCookie(c, SESSION_COOKIE, sid, {
+    httpOnly: true,
+    sameSite: 'Lax',
+    // TLS terminates at a local proxy (Tailscale), so the forwarded header is the signal.
+    secure: c.req.header('x-forwarded-proto') === 'https',
+    expires,
+    path: '/',
+  });
+}
+
 export function authRoutes(ctx: AppContext) {
   const service = createAuthService(ctx);
   const router = new Hono<AppEnv>();
@@ -33,14 +45,7 @@ export function authRoutes(ctx: AppContext) {
       throw e;
     }
     const { sid, expires, user } = result;
-    setCookie(c, SESSION_COOKIE, sid, {
-      httpOnly: true,
-      sameSite: 'Lax',
-      // TLS terminates at a local proxy (Tailscale), so the forwarded header is the signal.
-      secure: c.req.header('x-forwarded-proto') === 'https',
-      expires,
-      path: '/',
-    });
+    setSessionCookie(c, sid, expires);
     return c.json(user);
   });
 
@@ -53,7 +58,25 @@ export function authRoutes(ctx: AppContext) {
     return c.json({ ok: true } satisfies Ok);
   });
 
-  router.get('/me', requireAuth(ctx), (c) => c.json(c.get('user')));
+  // The two routes a person who must change their password can still reach (see requireAuth).
+  const forced = requireAuth(ctx, { allowPasswordChange: true });
+
+  router.get('/me', forced, (c) => c.json(c.get('user')));
+
+  router.post('/me/password', forced, async (c) => {
+    try {
+      await service.changePassword(
+        c.get('user'),
+        getCookie(c, SESSION_COOKIE) ?? '',
+        c.get('body'),
+        clientIp(c, ctx.config.trustProxy),
+      );
+    } catch (e) {
+      if (e instanceof TooManyAttempts) c.header('Retry-After', String(e.retryAfter));
+      throw e;
+    }
+    return c.json({ ok: true } satisfies Ok);
+  });
 
   // The page's first question on load. Signed out is a normal answer to it, so it is a
   // 200 with null here, where /me stays a 401 and the browser console stays quiet.

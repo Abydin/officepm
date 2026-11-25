@@ -142,6 +142,9 @@ describe('handoff', () => {
       });
       expect(res.status).toBe(201);
     }
+    // Users an admin creates must change their password before they can act (see requireAuth). These
+    // tests are about something else, so they start from people who already have.
+    ctx.db.raw.prepare('UPDATE users SET must_change_password = 0').run();
     maya = await new Client(app).login('maya@x.test');
     sam = await new Client(app).login('sam@x.test');
     tunde = await new Client(app).login('tunde@x.test');

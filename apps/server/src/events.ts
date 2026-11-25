@@ -53,6 +53,11 @@ export class EventBus {
     return this.closeWhere((o) => o.userId === userId);
   }
 
+  /** Ends every stream of a user except those opened with one session, e.g. after a password change. */
+  closeForUserExceptSession(userId: number, keepSessionId: string): number {
+    return this.closeWhere((o) => o.userId === userId && o.sessionId !== keepSessionId);
+  }
+
   /** Ends the streams opened with one session, e.g. on logout. Returns how many. */
   closeForSession(sessionId: string): number {
     return this.closeWhere((o) => o.sessionId === sessionId);

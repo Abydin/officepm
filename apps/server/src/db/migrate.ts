@@ -13,6 +13,7 @@ import { handoffs } from './migrations/0001-handoffs.js';
 import { participants } from './migrations/0002-participants.js';
 import { subtickets } from './migrations/0003-subtickets.js';
 import { pipeline } from './migrations/0004-pipeline.js';
+import { staffAccounts } from './migrations/0005-staff-accounts.js';
 
 export interface Migration {
   /** Unique and stable, sorted by name. Convention: 0001-short-slug. */
@@ -27,6 +28,7 @@ export const MIGRATIONS: readonly Migration[] = [
   participants,
   subtickets,
   pipeline,
+  staffAccounts,
 ];
 
 export const MIGRATIONS_TABLE = '_officepm_migrations';

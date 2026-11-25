@@ -1,15 +1,16 @@
 import bcrypt from 'bcrypt';
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import {
   DepartmentSchema,
   DepartmentSetSchema,
   UserCreateRequestSchema,
   firstRequestIssue,
   type CreatedUser,
+  type DeactivationResult,
   type Person,
   type UserListItem,
 } from '@officepm/shared';
-import type { AppContext, JsonBody } from '../../context.js';
+import type { AppContext, JsonBody, SessionUser } from '../../context.js';
 import { schema } from '../../db/index.js';
 import { badRequest, conflict, notFound } from '../../http/errors.js';
 import { requireShape } from '../../http/validate.js';
@@ -21,6 +22,12 @@ function clean(value: unknown): string | null {
   const parsed = DepartmentSchema.safeParse(value);
   if (!parsed.success) throw badRequest('department must be one short line of up to 40 characters');
   return parsed.data;
+}
+
+/** A user id from a URL. Anything that is not a plain number is a user that does not exist. */
+function parseId(id: string): number {
+  if (!/^\d{1,15}$/.test(id)) throw notFound('user not found');
+  return Number(id);
 }
 
 export function createUserService(ctx: AppContext) {
@@ -38,6 +45,8 @@ export function createUserService(ctx: AppContext) {
           is_admin: users.is_admin,
           created_at: users.created_at,
           department: users.department,
+          must_change_password: users.must_change_password,
+          deactivated_at: users.deactivated_at,
         })
         .from(users)
         .orderBy(asc(users.created_at))
@@ -51,11 +60,14 @@ export function createUserService(ctx: AppContext) {
      * This list does not make emails unreachable: a handoff returns the chosen assignee's
      * email on the ticket, exactly as every v1 ticket already shows its assignee email.
      * v1 has no project membership, so there is nothing to narrow it by.
+     * A deactivated person is left out: this list is for choosing someone NEW. They still
+     * resolve on the tickets they already have, because those read the users table directly.
      */
     people(): Person[] {
       return orm
         .select({ id: users.id, name: users.name, department: users.department })
         .from(users)
+        .where(isNull(users.deactivated_at))
         .orderBy(asc(users.name), asc(users.id))
         .all();
     },
@@ -77,6 +89,8 @@ export function createUserService(ctx: AppContext) {
           password: hash,
           is_admin: b.is_admin ? 1 : 0,
           department,
+          // The admin chose this password and knows it, so the person picks their own first.
+          must_change_password: 1,
         })
         .returning({ id: users.id })
         .get();
@@ -111,7 +125,8 @@ export function createUserService(ctx: AppContext) {
       // accepts exactly what v1 accepted.
       const updated = orm
         .update(users)
-        .set({ password: hash })
+        // The admin chose this password and knows it, so the person picks their own on next sign-in.
+        .set({ password: hash, must_change_password: 1 })
         .where(sql`${users.id} = ${id}`)
         .returning({ id: users.id })
         .get();
@@ -121,5 +136,65 @@ export function createUserService(ctx: AppContext) {
       orm.delete(sessions).where(eq(sessions.user_id, updated.id)).run();
       ctx.events.closeForUser(updated.id);
     },
+
+    /**
+     * Admin only. Switches an account off: it cannot sign in, its sessions are deleted and its
+     * event streams closed now. Its tickets, comments and history are untouched. Idempotent.
+     * Refused for the admin's own account and for the last active admin; both checks and the
+     * write are one transaction, so two admins cannot each deactivate the other.
+     */
+    deactivate(id: string, actor: SessionUser): DeactivationResult {
+      const userId = parseId(id);
+      const result = orm.transaction((tx) => {
+        const target = tx
+          .select({
+            id: users.id,
+            is_admin: users.is_admin,
+            deactivated_at: users.deactivated_at,
+          })
+          .from(users)
+          .where(eq(users.id, userId))
+          .get();
+        if (!target) throw notFound('user not found');
+        if (target.id === actor.id) throw conflict('you cannot deactivate your own account');
+        if (target.deactivated_at) return { id: target.id, deactivated_at: target.deactivated_at };
+        if (target.is_admin && activeAdminsOtherThan(tx, target.id) === 0) {
+          throw conflict('the last active admin cannot be deactivated');
+        }
+        const row = tx
+          .update(users)
+          .set({ deactivated_at: sql`datetime('now')` })
+          .where(eq(users.id, target.id))
+          .returning({ id: users.id, deactivated_at: users.deactivated_at })
+          .get();
+        tx.delete(sessions).where(eq(sessions.user_id, target.id)).run();
+        return row;
+      });
+      ctx.events.closeForUser(result.id);
+      return result;
+    },
+
+    /** Admin only. Switches an account back on. The person signs in with the password they had. Idempotent. */
+    reactivate(id: string): DeactivationResult {
+      const updated = orm
+        .update(users)
+        .set({ deactivated_at: null })
+        .where(eq(users.id, parseId(id)))
+        .returning({ id: users.id, deactivated_at: users.deactivated_at })
+        .get();
+      if (!updated) throw notFound('user not found');
+      return updated;
+    },
   };
+
+  /** How many active admins there are besides one account. The rule "never zero" hangs on this. */
+  function activeAdminsOtherThan(tx: Pick<typeof orm, 'select'>, userId: number): number {
+    return (
+      tx
+        .select({ n: sql<number>`count(*)` })
+        .from(users)
+        .where(and(eq(users.is_admin, 1), isNull(users.deactivated_at), ne(users.id, userId)))
+        .get()?.n ?? 0
+    );
+  }
 }

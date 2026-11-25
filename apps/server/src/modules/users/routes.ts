@@ -25,5 +25,13 @@ export function userRoutes(ctx: AppContext) {
     return c.json({ ok: true } satisfies Ok);
   });
 
+  router.post('/users/:id/deactivate', ...admin, (c) =>
+    c.json(service.deactivate(c.req.param('id'), c.get('user'))),
+  );
+
+  router.post('/users/:id/reactivate', ...admin, (c) =>
+    c.json(service.reactivate(c.req.param('id'))),
+  );
+
   return router;
 }

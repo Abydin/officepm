@@ -18,6 +18,8 @@ export const UserSchema = z.object({
   email: z.string(),
   name: z.string(),
   isAdmin: z.boolean(),
+  /** Added after v1, so a v1 server's answer has none. True until the person picks a password of their own. */
+  mustChangePassword: z.boolean().optional(),
 });
 export type User = z.infer<typeof UserSchema>;
 
@@ -30,6 +32,10 @@ export const UserListItemSchema = z.object({
   created_at: Timestamp,
   /** Added after v1, so a v1 server's rows have none. */
   department: z.string().nullish(),
+  /** Added after v1. 1 while the person has to choose a new password before using the app. */
+  must_change_password: z.number().int().nullish(),
+  /** Added after v1. When an admin deactivated the account, or null/absent while it is active. */
+  deactivated_at: Timestamp.nullish(),
 });
 export type UserListItem = z.infer<typeof UserListItemSchema>;
 

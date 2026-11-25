@@ -41,11 +41,12 @@ export function createParticipantService(ctx: AppContext) {
       }
       requireShape(ParticipantAddSchema, b);
       const person = orm
-        .select({ id: users.id, email: users.email })
+        .select({ id: users.id, email: users.email, deactivated_at: users.deactivated_at })
         .from(users)
         .where(eq(users.id, b.user_id))
         .get();
       if (!person) throw badRequest('user_id must be an existing user');
+      if (person.deactivated_at) throw badRequest('user_id is a deactivated user');
       if (ticket.assignee && ticket.assignee === person.email) {
         throw conflict('that person is the assignee already');
       }

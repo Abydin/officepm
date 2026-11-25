@@ -143,6 +143,9 @@ describe('sub-tickets', () => {
       });
       expect(res.status).toBe(201);
     }
+    // Users an admin creates must change their password before they can act (see requireAuth). These
+    // tests are about something else, so they start from people who already have.
+    ctx.db.raw.prepare('UPDATE users SET must_change_password = 0').run();
     maya = await new Client(app).login('maya@x.test');
     sam = await new Client(app).login('sam@x.test');
     const people = (await sam.call('GET', '/api/people')).json as Array<{

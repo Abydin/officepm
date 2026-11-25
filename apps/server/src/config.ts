@@ -18,6 +18,11 @@ export interface Config {
    * behind a proxy that sets it, such as the Tailscale or Caddy setup in ROLLOUT.md.
    */
   trustProxy: boolean;
+  /**
+   * PM_PUBLIC_URL: the origin invite links are built on (https://pm.example.com), already
+   * validated and stripped to its origin. Empty means the origin of the request is used.
+   */
+  publicUrl: string;
   adminEmail: string;
   adminPassword: string;
   /** True when no ADMIN_PASSWORD was set, so one was generated and must be printed once. */
@@ -45,13 +50,35 @@ export function parseDemoMode(value: string | undefined): boolean {
   );
 }
 
+/**
+ * PM_PUBLIC_URL: an http(s) origin with no path, user info, query or fragment. Anything else is
+ * a typo that would put a broken or foreign host into every invite link, so it stops the server.
+ */
+export function parsePublicUrl(value: string | undefined): string {
+  const raw = (value ?? '').trim();
+  if (!raw) return '';
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('PM_PUBLIC_URL must be a URL such as https://pm.example.com');
+  }
+  const bare = url.pathname === '/' && !url.search && !url.hash && !url.username && !url.password;
+  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !bare) {
+    throw new Error(
+      'PM_PUBLIC_URL must be an http or https origin with no path, such as https://pm.example.com',
+    );
+  }
+  return url.origin;
+}
+
 // apps/server/{src,dist}/config.(ts|js): three levels up is the repo root.
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
 /**
  * Reads the same environment variables v1 does, with the same defaults:
  * PORT, PM_DATA_DIR, PM_PROJECTS_FILE, PM_TOKEN, NODE_ENV, ADMIN_EMAIL and
- * ADMIN_PASSWORD, plus the v2-only PM_WEB_DIR and PM_TRUST_PROXY. PM_DATA_DIR defaults to the repo root, where v1 kept pm.db.
+ * ADMIN_PASSWORD, plus the v2-only PM_WEB_DIR, PM_TRUST_PROXY and PM_PUBLIC_URL. PM_DATA_DIR defaults to the repo root, where v1 kept pm.db.
  * DEMO_MODE and GOATCOUNTER_CODE belong to the hosted demo and are off when unset.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -79,6 +106,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     pmToken: env.PM_TOKEN || '',
     nodeEnv: env.NODE_ENV || 'development',
     trustProxy: env.PM_TRUST_PROXY === '1' || env.PM_TRUST_PROXY === 'true',
+    publicUrl: parsePublicUrl(env.PM_PUBLIC_URL),
     adminEmail: env.ADMIN_EMAIL || 'admin@officepm.local',
     adminPassword: env.ADMIN_PASSWORD || crypto.randomBytes(12).toString('base64url'),
     adminPasswordGenerated,

@@ -583,6 +583,8 @@ describe('event streams after a password reset', () => {
       password: 'sam-password',
     });
     expect(created.status).toBe(201);
+    // The stream below needs a user who has already chosen a password (see requireAuth).
+    h.ctx.db.raw.prepare('UPDATE users SET must_change_password = 0').run();
     const sam = client(h.app);
     await sam.login('sam@x.test', 'sam-password');
 

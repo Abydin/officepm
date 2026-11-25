@@ -10,6 +10,8 @@ export interface SessionUser {
   email: string;
   name: string;
   isAdmin: boolean;
+  /** True until the person has chosen a password of their own (see requireAuth). */
+  mustChangePassword: boolean;
 }
 
 /** Hono environment: what middleware puts on the request context. */
@@ -38,4 +40,6 @@ export interface AppContext {
   dashboardCache: Map<number, DashboardCacheEntry>;
   /** Failed-login throttle. Left out, the auth module makes its own with the defaults. */
   loginThrottle?: LoginThrottle;
+  /** Failed-guess throttle for the public invite routes. Left out, the invite module makes its own. */
+  inviteThrottle?: LoginThrottle;
 }
