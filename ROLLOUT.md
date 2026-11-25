@@ -52,7 +52,9 @@ one-time link for each person, or a CSV for many at once). OfficePM sends no
 email, so you pass each link on yourself. See "Inviting staff" in the README.
 If people reach OfficePM at an address other than the one you opened it on
 (a Tailscale name, a proxy), set `PM_PUBLIC_URL` in `.env` to that address so
-the links are right.
+the links are right. Behind a proxy always set it. The invite token is part of the link's
+address, so a proxy that logs request paths will log it: leave `/api/invites/` out of the access
+log, or treat that log as a secret.
 There is no self-signup by design (PRD 6.1) - the admin creates every
 account.
 
@@ -104,7 +106,8 @@ If the office PC is a Mac, use a `launchd` plist with
    set `PM_HOST_BIND=0.0.0.0`.)
 4. Optional: run `tailscale serve https / http://localhost:3000` on the
    office PC to get a `https://pm-office.<tailnet>.ts.net` address with a
-   managed certificate. If you do this, set `PM_TRUST_PROXY=1` so the failed-login
+   managed certificate. If you do this, set `PM_PUBLIC_URL` to that address (otherwise invite links are built from the proxy's
+   `X-Forwarded-Host` header, and the server warns at startup), set `PM_TRUST_PROXY=1` so the failed-login
    throttle sees each person's real address, and OfficePM's session cookie is marked
    `secure` because the proxy reports `X-Forwarded-Proto: https`.
 5. If Tailscale is ever down, the office LAN still works as a fallback -
@@ -286,6 +289,11 @@ then fix `projects.json` and restart again. Check the log after any edit.
    `pnpm install --frozen-lockfile && pnpm build && sudo systemctl restart officepm`.
 4. Check `curl http://127.0.0.1:3000/api/health`, then the container log or
    `journalctl` for a startup line saying `projects.json OK`, and sign in.
+
+**Rolling back is not harmless for accounts.** v1, or any release without the
+`users.deactivated_at` and `users.must_change_password` columns, ignores both: deactivated people
+can sign in again with their old password, and nobody is forced to change a temporary one. After
+a rollback, reset the passwords of anyone who was deactivated or still had to choose a new one.
 
 Database migrations run on start, are applied once each, and are additive only, so an
 upgrade never rewrites existing rows. To undo an upgrade, check out the previous

@@ -16,7 +16,7 @@ import {
 import type { AppContext } from './context.js';
 import { DEMO_REFUSAL, ensureDemoWorkspace, isDemoBlocked } from './demo.js';
 import { LoginThrottle } from './http/throttle.js';
-import { parsePublicUrl } from './config.js';
+import { configWarnings, parsePublicUrl } from './config.js';
 import { runMigrations } from './db/migrate.js';
 import { BASELINE_SQL } from './db/migrations/0000-baseline.js';
 import { createUserService } from './modules/users/service.js';
@@ -406,6 +406,31 @@ describe('invite links', () => {
   });
 });
 
+describe('the startup warning about proxy trust', () => {
+  it('fires when proxy trust is on and PM_PUBLIC_URL is not, and only then', () => {
+    const cfg = (env: Record<string, string>) => loadConfig({ PM_DATA_DIR: '/tmp/x', ...env });
+    const warned = configWarnings(cfg({ PM_TRUST_PROXY: '1' }));
+    expect(warned).toHaveLength(1);
+    expect(warned[0]).toMatch(/WARNING: PM_TRUST_PROXY is on but PM_PUBLIC_URL is not set/);
+    expect(configWarnings(cfg({ PM_TRUST_PROXY: 'true' }))).toHaveLength(1);
+    expect(configWarnings(cfg({}))).toEqual([]);
+    expect(
+      configWarnings(cfg({ PM_TRUST_PROXY: '1', PM_PUBLIC_URL: 'https://pm.example.com' })),
+    ).toEqual([]);
+  });
+
+  it('is quiet for the demo as render.yaml configures it', () => {
+    const yaml = readFileSync(path.join(__dirname, '../../../render.yaml'), 'utf8');
+    const value = (key: string) =>
+      new RegExp(`key: ${key}\\s*\\n\\s*value: '?([^'\\n]+)'?`).exec(yaml)?.[1];
+    const env = { PM_TRUST_PROXY: value('PM_TRUST_PROXY'), PM_PUBLIC_URL: value('PM_PUBLIC_URL') };
+    expect(env.PM_PUBLIC_URL).toBe('https://officepm-demo.onrender.com');
+    expect(
+      configWarnings(loadConfig({ PM_DATA_DIR: '/tmp/x', DEMO_MODE: 'true', ...env } as never)),
+    ).toEqual([]);
+  });
+});
+
 describe('where invite links point', () => {
   it('uses PM_PUBLIC_URL when it is set', async () => {
     const h = await harness({ PM_PUBLIC_URL: 'https://pm.example.com/' });
@@ -445,6 +470,118 @@ describe('where invite links point', () => {
     ]) {
       expect(() => parsePublicUrl(bad), bad).toThrow(/PM_PUBLIC_URL/);
     }
+  });
+});
+
+describe('what a new password may not be', () => {
+  const bad = ['\u0000'.repeat(8), 'good-pass\u0000word', ' '.repeat(10)];
+
+  it('is refused on invite accept, and the invite stays usable', async () => {
+    const h = await harness();
+    const admin = await signedIn(h);
+    const made = await invite(admin, 'new@x.test');
+    const anon = client(h.app);
+    for (const password of bad) {
+      const res = await anon.call('POST', `/api/invites/${made.token}/accept`, { password });
+      expect(res.status).toBe(400);
+    }
+    expect(row(h, "SELECT COUNT(*) n FROM users WHERE email='new@x.test'").n).toBe(0);
+    const ok = await anon.call('POST', `/api/invites/${made.token}/accept`, { password: PW });
+    expect(ok.status).toBe(201);
+  });
+
+  it('is refused on a self-service change, and the old password still works', async () => {
+    const h = await harness();
+    addUser(h, 'sam@x.test');
+    const sam = await signedIn(h, 'sam@x.test', PW);
+    for (const new_password of bad) {
+      const res = await sam.call('POST', '/api/me/password', {
+        current_password: PW,
+        new_password,
+      });
+      expect(res.status).toBe(400);
+    }
+    expect((await client(h.app).login('sam@x.test', PW)).status).toBe(200);
+  });
+
+  it('does not change what an admin may set in a reset', async () => {
+    const h = await harness();
+    const admin = await signedIn(h);
+    const id = addUser(h, 'sam@x.test');
+    const res = await admin.call('PATCH', `/api/users/${id}/password`, { password: '      ' });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('invites and the person who made them', () => {
+  async function minted(h: Harness, adminOnly = true) {
+    const boss = addUser(h, 'boss@x.test', { admin: true, name: 'Boss' });
+    const bossSession = await signedIn(h, 'boss@x.test', PW);
+    const made = await invite(bossSession, 'fresh@x.test', { is_admin: adminOnly });
+    const admin = await signedIn(h);
+    return { boss, made, admin };
+  }
+
+  it('are deleted when their creator is deactivated, and reactivating does not bring them back', async () => {
+    const h = await harness();
+    const { boss, made, admin } = await minted(h);
+    const other = await invite(admin, 'other@x.test');
+    const used = await invite(await signedIn(h, 'boss@x.test', PW), 'used@x.test');
+    await client(h.app).call('POST', `/api/invites/${used.token}/accept`, { password: PW });
+
+    expect((await admin.call('POST', `/api/users/${boss}/deactivate`, {})).status).toBe(200);
+    const anon = client(h.app);
+    expect((await anon.call('GET', `/api/invites/${made.token}`)).status).toBe(404);
+    expect(
+      (await anon.call('POST', `/api/invites/${made.token}/accept`, { password: PW })).status,
+    ).toBe(404);
+    expect(row(h, "SELECT COUNT(*) n FROM users WHERE email='fresh@x.test'").n).toBe(0);
+    // Only the creator's unused invites go: someone else's, and a used one (a record), stay.
+    expect((await anon.call('GET', `/api/invites/${other.token}`)).status).toBe(200);
+    expect(row(h, "SELECT COUNT(*) n FROM invites WHERE email='used@x.test'").n).toBe(1);
+    expect(row(h, "SELECT COUNT(*) n FROM invites WHERE email='fresh@x.test'").n).toBe(0);
+
+    await admin.call('POST', `/api/users/${boss}/reactivate`, {});
+    expect((await anon.call('GET', `/api/invites/${made.token}`)).status).toBe(404);
+  });
+
+  it('cannot be redeemed after the creator is deactivated even if the row survived', async () => {
+    const h = await harness();
+    const { boss, made } = await minted(h);
+    // Switch the creator off behind the service's back, so the invite row is still there.
+    h.ctx.db.raw
+      .prepare("UPDATE users SET deactivated_at = datetime('now') WHERE id = ?")
+      .run(boss);
+    expect(row(h, "SELECT COUNT(*) n FROM invites WHERE email='fresh@x.test'").n).toBe(1);
+    const anon = client(h.app);
+    expect((await anon.call('GET', `/api/invites/${made.token}`)).status).toBe(404);
+    expect(
+      (await anon.call('POST', `/api/invites/${made.token}/accept`, { password: PW })).status,
+    ).toBe(404);
+    expect(row(h, "SELECT COUNT(*) n FROM users WHERE email='fresh@x.test'").n).toBe(0);
+    expect(row(h, "SELECT used_at u FROM invites WHERE email='fresh@x.test'").u).toBeNull();
+  });
+
+  it('cannot be claimed in the window after the lookup: the claim itself checks the creator', async () => {
+    const h = await harness();
+    const { boss, made } = await minted(h);
+    const anon = client(h.app);
+    // Deactivate the creator while bcrypt is hashing, i.e. between the lookup and the claim.
+    const realHash = bcrypt.hash;
+    const spy = (bcrypt as { hash: unknown }).hash;
+    (bcrypt as { hash: unknown }).hash = async (...a: Parameters<typeof realHash>) => {
+      h.ctx.db.raw
+        .prepare("UPDATE users SET deactivated_at = datetime('now') WHERE id = ?")
+        .run(boss);
+      return realHash(...a);
+    };
+    try {
+      const res = await anon.call('POST', `/api/invites/${made.token}/accept`, { password: PW });
+      expect(res.status).toBe(404);
+    } finally {
+      (bcrypt as { hash: unknown }).hash = spy;
+    }
+    expect(row(h, "SELECT COUNT(*) n FROM users WHERE email='fresh@x.test'").n).toBe(0);
   });
 });
 
@@ -787,20 +924,21 @@ describe('deactivating people', () => {
     expect(row(h, 'SELECT name FROM users WHERE id = ?', id).name).toBe('Sam Adeyemi');
   });
 
-  it('leaves the invites they created pending, and the email stays taken', async () => {
+  // Was "leaves the invites they created pending": that behaviour was the bug (a kept admin
+  // invite could still make an admin). The invite is now deleted; the email stays taken.
+  it('deletes the invites they created, and the email stays taken', async () => {
     const h = await harness();
     const admin = await signedIn(h);
     const id = addUser(h, 'two@x.test', { admin: true });
-    h.ctx.db.raw.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(id);
     const two = await signedIn(h, 'two@x.test', PW);
     const made = await invite(two, 'guest@x.test');
     await admin.call('POST', `/api/users/${id}/deactivate`, {});
-    expect((await client(h.app).call('GET', `/api/invites/${made.token}`)).status).toBe(200);
+    expect((await client(h.app).call('GET', `/api/invites/${made.token}`)).status).toBe(404);
     expect(
       (await admin.call('POST', '/api/invites', { email: 'two@x.test', name: 'T' })).status,
     ).toBe(409);
     const list = (await admin.call('GET', '/api/invites')).json as unknown as Json[];
-    expect(list.find((i) => i.id === made.id)!.status).toBe('pending');
+    expect(list.find((i) => i.id === made.id)).toBeUndefined();
   });
 
   it('is not handed new work: a handoff to a deactivated person is refused', async () => {

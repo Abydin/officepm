@@ -104,7 +104,9 @@ days; the server keeps only a hash of it, so a lost link cannot be shown again: 
 (Admin > Invites) and make a new one. The list shows each invite as pending, used or expired.
 Links are built on the address you reach OfficePM at. Behind a proxy, set `PM_PUBLIC_URL`
 (for example `https://pm.example.com`) so they carry the public address, or `PM_TRUST_PROXY=1`
-so the proxy's `X-Forwarded-Proto` and `X-Forwarded-Host` are used.
+so the proxy's `X-Forwarded-Proto` and `X-Forwarded-Host` are used. Behind a proxy, set
+`PM_PUBLIC_URL`: trusting the forwarded headers alone lets any proxy that does not overwrite
+`X-Forwarded-Host` decide where a link points, and the server warns at startup when that is the setup.
 
 **Import many people from a CSV.** Admin > Import staff from CSV: paste or upload a file with the
 header `email,name,is_admin` (`is_admin` is optional: `true`, `false`, `yes`, `no`, `1` or `0`):
@@ -138,8 +140,11 @@ first). A deactivated person cannot sign in (the same "invalid email or password
 password), their sessions and live streams end at once, and they no longer appear when
 choosing someone for new work. Their tickets, comments and history stay, and still show their
 name. Reactivate brings them back with the password they had. You cannot deactivate your own
-account, and the last active admin can never be deactivated. Invites a deactivated admin made
-stay pending.
+account, and the last active admin can never be deactivated. Deactivating
+someone also deletes the invites they made that were not yet used, so an invite link they kept
+cannot create an account after they are gone (an invite whose creator is deactivated is also
+refused when opened). Reactivating them does not bring those invites back: make new ones. Invites
+that were already accepted stay as a record.
 
 What is still not here: no email sending (not for invites, not for "forgot password", an admin
 resets that), and no SSO.
@@ -499,8 +504,8 @@ All configuration is environment variables.
 | `PM_TOKEN` | empty | Shared secret for the GitHub webhooks (`x-pm-token` header). Empty disables them. |
 | `ADMIN_EMAIL` | `admin@officepm.local` | First-boot admin, used only while the users table is empty |
 | `ADMIN_PASSWORD` | generated, printed once | Password for that admin |
-| `PM_TRUST_PROXY` | off | `1` or `true` behind a reverse proxy, so the login throttle uses the address in `X-Forwarded-For`. Leave off when reached directly: a client could forge it. |
-| `PM_PUBLIC_URL` | empty | The address invite links are built on, as an origin with no path (`https://pm.example.com`). Unset, links use the address of the admin's own request, and `X-Forwarded-Proto` and `X-Forwarded-Host` count only when `PM_TRUST_PROXY` is set. A value that is not an http or https origin stops the server. |
+| `PM_TRUST_PROXY` | off | `1` or `true` behind a reverse proxy, so the login throttle uses the address in `X-Forwarded-For`. Leave off when reached directly: a client could forge it. Behind a proxy, also set `PM_PUBLIC_URL`: with trust on and no `PM_PUBLIC_URL` the server prints a startup warning, because invite links are then built from `X-Forwarded-Host`. |
+| `PM_PUBLIC_URL` | empty | The address invite links are built on, as an origin with no path (`https://pm.example.com`). **Set it whenever OfficePM is behind a proxy.** Unset, links use the address of the admin's own request, and `X-Forwarded-Proto` and `X-Forwarded-Host` count only when `PM_TRUST_PROXY` is set; a proxy that does not overwrite those headers then lets a request choose the address in a link. A value that is not an http or https origin stops the server. |
 | `DEMO_MODE` | off | `true`, `1` or `yes` (any case) runs the public demo (see [Public demo](#public-demo)): seeds the demo workspace when the database is empty, creates no first-boot admin, refuses uploads and account changes, throttles harder, and resets every night at 03:00 UTC. Needs `PM_DATA_DIR`, so it can never wipe a database in the repository root, and refuses a database that holds anything but demo data. Set to anything it does not recognise (other than `false`, `0`, `no`, `off` or empty), the server refuses to start instead of running as a normal instance. |
 | `GOATCOUNTER_CODE` | empty | A GoatCounter site code (letters, digits and hyphens). Set, the page gets the counting script and the Content-Security-Policy allows `gc.zgo.at` and `<code>.goatcounter.com`. Unset, nothing external is loaded. Anything else makes the server refuse to start. |
 | `NODE_ENV` | `development` | Only printed at startup |
@@ -568,14 +573,18 @@ tailnet. It is not hardened for the public internet; do not port-forward it.
   and deactivating a user all end the sessions and event streams they should. OfficePM sends
   no email and has no SSO.
 - Invite tokens are 32 random bytes, valid for 7 days and one use, and only their SHA-256
-  hash is stored, so a copy of the database holds no working link. The public validate and
+  hash is stored, so a copy of the database holds no working link. What protects a link is
+  that the token is 256 random bits, looked up by its SHA-256 hash; the lookup is not
+  claimed to be constant time. The public validate and
   accept routes answer every unknown, malformed, expired, used or revoked token with the
-  same 404, compare hashes in constant time, and count failed guesses per address with the
+  same 404, and count failed guesses per address with the
   login throttle's machinery (a valid token is refunded). The accept request creates the
   account, claims the invite and signs in in one transaction. The token travels in the URL
-  path, so a reverse proxy that logs request paths will log it: it is single-use, but
-  turn that logging off for `/api/invites/` if you can. A password chosen by a person has an
-  8 character minimum; an admin-set password keeps 6 and must be changed on first sign-in.
+  path of the two public invite calls (`GET /api/invites/<token>` and
+  `POST /api/invites/<token>/accept`), so a reverse proxy that logs request paths will log it.
+  It is single-use and expires in 7 days, but until then a logged token opens the account:
+  exclude `/api/invites/` from proxy access logs, or treat those logs as secrets. A password chosen by a person has an
+  8 character minimum, may not contain a NUL character (bcrypt would stop reading there) and may not be only spaces; an admin-set password keeps 6 and must be changed on first sign-in.
 - There is no separate CSRF token: writes rely on the `SameSite=Lax` cookie.
 - Failed logins are throttled in a 15 minute window, answered 429 before any password
   work: per full client address (30; an IPv6 address by all its groups, link-local with
@@ -622,6 +631,14 @@ add: six tables (`invites` is the newest), six columns on v1's tables (`users.de
 echoes the ticket columns in its ticket JSON through `SELECT *` but does not use them), and no
 existing row changes. The data-compat suite checks that v1 still boots and runs on a migrated
 database. Back up first.
+
+**Rolling back loses the new account rules.** v1, or any release without the
+`users.deactivated_at` and `users.must_change_password` columns, does not know them: it lets
+deactivated people sign in again with their old password, and it does not force anyone to choose a
+new one, so everyone an admin created or reset with a temporary password can use it as it is.
+If you roll back, reset the passwords of anyone who was deactivated or still had a forced change,
+and re-deactivate after you upgrade again.
+
 The whole procedure, including Docker and the rollback, is in
 [docs/MIGRATING-FROM-V1.md](docs/MIGRATING-FROM-V1.md).
 

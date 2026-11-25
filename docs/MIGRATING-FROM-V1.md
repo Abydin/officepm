@@ -108,6 +108,10 @@ present at commit `5b25841`, if you need to start v1 again for a rollback.
 
 Either way you lose nothing from before the migration.
 
+One thing a rollback does lose: v1 does not know the staff-account columns (`users.deactivated_at`,
+`users.must_change_password`). People an admin deactivated can sign in again, and temporary
+passwords stop being forced to change. Reset those passwords after rolling back.
+
 ## Taking backups on v2 afterwards
 
 v2 has a proper backup command (`pnpm backup`, or the Docker form in `ROLLOUT.md`

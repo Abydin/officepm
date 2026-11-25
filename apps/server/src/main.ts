@@ -8,7 +8,7 @@ import {
   limitDemoDatabaseSize,
   startDemoReset,
 } from './demo.js';
-import { loadConfig } from './config.js';
+import { configWarnings, loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { openDatabase } from './db/index.js';
 import { EventBus } from './events.js';
@@ -47,6 +47,8 @@ async function main(): Promise<void> {
     assertDemoDatabase(db);
     limitDemoDatabaseSize(db);
   }
+
+  for (const line of configWarnings(config)) console.warn(line);
 
   const ctx: AppContext = {
     config,

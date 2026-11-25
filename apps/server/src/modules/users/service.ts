@@ -32,7 +32,7 @@ function parseId(id: string): number {
 
 export function createUserService(ctx: AppContext) {
   const { orm } = ctx.db;
-  const { users, sessions } = schema;
+  const { users, sessions, invites } = schema;
 
   return {
     list(): UserListItem[] {
@@ -168,6 +168,11 @@ export function createUserService(ctx: AppContext) {
           .returning({ id: users.id, deactivated_at: users.deactivated_at })
           .get();
         tx.delete(sessions).where(eq(sessions.user_id, target.id)).run();
+        // Their unused invites die with their authority: an admin invite they kept the link to
+        // must not make a new admin after they are switched off. Reactivating does not restore them.
+        tx.delete(invites)
+          .where(and(eq(invites.created_by, target.id), isNull(invites.used_at)))
+          .run();
         return row;
       });
       ctx.events.closeForUser(result.id);

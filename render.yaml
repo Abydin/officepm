@@ -25,6 +25,10 @@ services:
       # address, and the per-client login and write limits would count them all together.
       - key: PM_TRUST_PROXY
         value: '1'
+      # Invite links are switched off in the demo, but with proxy trust on the server asks for
+      # this, and it keeps the startup log clean. Change it if the service is renamed.
+      - key: PM_PUBLIC_URL
+        value: https://officepm-demo.onrender.com
       # Optional visitor counting, off unless set. Add GOATCOUNTER_CODE in the dashboard
       # (the site code, the part before .goatcounter.com).
       # PORT is set by Render itself (10000) and the server reads it.

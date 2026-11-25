@@ -28,6 +28,16 @@ describe('new passwords', () => {
     expect(NewPasswordSchema.safeParse('€'.repeat(25)).success).toBe(false);
   });
 
+  it('refuse a NUL byte and a password of only whitespace, which bcrypt would treat as empty', () => {
+    expect(NewPasswordSchema.safeParse('\u0000'.repeat(8)).success).toBe(false);
+    expect(NewPasswordSchema.safeParse('good-pass\u0000word').success).toBe(false);
+    expect(NewPasswordSchema.safeParse(' '.repeat(10)).success).toBe(false);
+    expect(NewPasswordSchema.safeParse(' \t\n\u00a0\u3000 '.repeat(2)).success).toBe(false);
+    // Spaces inside a real passphrase are fine, and an admin reset keeps its own rules.
+    expect(NewPasswordSchema.safeParse('correct horse battery').success).toBe(true);
+    expect(PasswordResetSchema.safeParse({ password: '      ' }).success).toBe(true);
+  });
+
   it('names the field in the first issue of a password change', () => {
     expect(
       firstRequestIssue(PasswordChangeSchema, { current_password: 'x', new_password: 'short' }),

@@ -53,6 +53,14 @@ export function createInviteService(ctx: AppContext) {
   /** A live invite: not used and not past its expiry. Both sides of the date go through datetime(). */
   const live = and(isNull(invites.used_at), sql`datetime(${invites.expires_at}) > datetime('now')`);
 
+  /**
+   * An invite is only good while the admin who made it is still an active account. Deactivating
+   * someone deletes their unused invites too; this is the second lock, so an invite whose
+   * creator was switched off can never be redeemed even if that delete were bypassed.
+   */
+  const creatorActive = sql`EXISTS (SELECT 1 FROM users u WHERE u.id = ${invites.created_by} AND u.deactivated_at IS NULL)`;
+  const redeemable = and(live, creatorActive);
+
   const accountExists = (tx: Pick<typeof orm, 'select'>, email: string) =>
     !!tx.select({ id: users.id }).from(users).where(eq(users.email, email)).get();
   const pendingInvite = (tx: Pick<typeof orm, 'select'>, email: string) =>
@@ -87,16 +95,22 @@ export function createInviteService(ctx: AppContext) {
 
   const linkFor = (origin: string, token: string) => `${origin}/#/invite/${token}`;
 
-  /** The invite a token opens, or the uniform 404. The hashes are compared in constant time. */
+  /**
+   * The invite a token opens, or the uniform 404. What protects it is the token itself: 256
+   * random bits, looked up by their SHA-256 hash, so a guess cannot be told apart from a miss
+   * and a copy of the database holds nothing that opens a link. The lookup is a plain equality
+   * in SQL and is not claimed to be constant time.
+   */
   function findLive(token: string) {
     if (!TOKEN_SHAPE.test(token)) throw gone();
     const hash = hashToken(token);
     const row = orm
       .select()
       .from(invites)
-      .where(and(eq(invites.token_hash, hash), live))
+      .where(and(eq(invites.token_hash, hash), redeemable))
       .get();
     if (!row) throw gone();
+    // A sanity check only: the row was found by this very hash, so it cannot differ.
     const a = Buffer.from(row.token_hash, 'hex');
     const b = Buffer.from(hash, 'hex');
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw gone();
@@ -201,7 +215,7 @@ export function createInviteService(ctx: AppContext) {
         const claimed = tx
           .update(invites)
           .set({ used_at: sql`datetime('now')` })
-          .where(and(eq(invites.token_hash, hashOfToken), live))
+          .where(and(eq(invites.token_hash, hashOfToken), redeemable))
           .returning({ email: invites.email, name: invites.name, is_admin: invites.is_admin })
           .get();
         if (!claimed) throw gone();

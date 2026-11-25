@@ -114,3 +114,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     goatCounterCode,
   };
 }
+
+/**
+ * Lines to print at startup about a configuration that works but is easy to get wrong. Not an
+ * error: an existing deploy must keep booting.
+ */
+export function configWarnings(config: Pick<Config, 'trustProxy' | 'publicUrl'>): string[] {
+  if (!config.trustProxy || config.publicUrl) return [];
+  return [
+    '[OfficePM] WARNING: PM_TRUST_PROXY is on but PM_PUBLIC_URL is not set. Invite links are then built ' +
+      'from the X-Forwarded-Host header, and a proxy that does not overwrite that header lets a request ' +
+      'choose the address in a link. Set PM_PUBLIC_URL to the address people use (https://pm.example.com).',
+  ];
+}

@@ -28,7 +28,10 @@ export const NewPasswordSchema = z
   .refine(
     (value) => utf8Length(value) <= NEW_PASSWORD_MAX_BYTES,
     `must be at most ${NEW_PASSWORD_MAX_BYTES} bytes`,
-  );
+  )
+  // bcrypt stops reading at a NUL, so a password of NULs hashes like the empty string.
+  .refine((value) => !value.includes('\u0000'), 'must not contain a NUL character')
+  .refine((value) => value.trim() !== '', 'must not be only spaces');
 
 /** POST /api/me/password. */
 export const PasswordChangeSchema = z.object({
