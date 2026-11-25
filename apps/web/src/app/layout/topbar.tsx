@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Inbox, KeyRound, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { Inbox, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import { Avatar } from '@/components/avatar';
@@ -148,16 +148,18 @@ export function Topbar({
           <Moon className="size-4" aria-hidden="true" />
         )}
       </Button>
-      <Avatar who={user.name || user.email} size="lg" />
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="Change password"
-        title="Change password"
+      {/* The avatar opens the change-password dialog: a button of its own would not fit a phone's top bar. */}
+      <button
+        type="button"
+        title={`${user.name || user.email}: change password`}
         onClick={() => setChangingPassword(true)}
+        className="cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:shadow-[0_0_0_3px_var(--accent-soft)] focus-visible:outline-none"
       >
-        <KeyRound className="size-4" aria-hidden="true" />
-      </Button>
+        <span aria-hidden="true" className="flex">
+          <Avatar who={user.name || user.email} size="lg" />
+        </span>
+        <span className="sr-only">Change password</span>
+      </button>
       <Button
         variant="ghost"
         size="icon"
