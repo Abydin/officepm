@@ -47,7 +47,12 @@ node --env-file=.env apps/server/dist/main.js   # .env must also set PM_WEB_DIR=
 ```
 
 Open `http://localhost:3000` on the office PC to confirm it's up, log in
-with the admin account, then use Admin > Create user to add everyone else.
+with the admin account, then bring everyone else in with Admin > Invite staff (a
+one-time link for each person, or a CSV for many at once). OfficePM sends no
+email, so you pass each link on yourself. See "Inviting staff" in the README.
+If people reach OfficePM at an address other than the one you opened it on
+(a Tailscale name, a proxy), set `PM_PUBLIC_URL` in `.env` to that address so
+the links are right.
 There is no self-signup by design (PRD 6.1) - the admin creates every
 account.
 
@@ -294,9 +299,12 @@ backup from step 1.
 ### Logging in
 
 Go to the OfficePM link your admin gave you (starts with `http://` or
-`https://`, works over Tailscale from home too). Log in with the email and
-password the admin created for you. If you forget your password, ask an
-admin to reset it - there's no "forgot password" email flow.
+`https://`, works over Tailscale from home too). Most people start from an invite link the admin
+sent: open it and choose your password (at least 8 characters). If an admin gave you a
+password instead, you are asked to choose your own the first time you sign in. Change it
+later with the key button in the top bar. If you forget your password, ask an
+admin to reset it (you will be asked to choose a new one) - there's no "forgot
+password" email flow.
 
 ### Finding your board
 

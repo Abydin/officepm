@@ -57,11 +57,24 @@ repository root, where v1 kept it. Set it. `ROLLOUT.md` has the systemd unit.
 
 ### With Docker
 
+This is the shortest way to run your own copy for your team. You need Docker with the
+compose plugin and one always-on machine (a spare PC, a small VM).
+
 ```bash
+git clone https://github.com/Abydin/officepm.git && cd officepm
 cp .env.example .env     # set PM_TOKEN and ADMIN_PASSWORD
 docker compose up -d --build
 curl http://127.0.0.1:3000/api/health      # {"ok":true}
 ```
+
+Then open http://127.0.0.1:3000 on that machine and sign in as `admin@officepm.local` with the
+`ADMIN_PASSWORD` you set (if you left it empty, the generated one is printed once in
+`docker compose logs officepm`). Your own boards come from `projects.json`
+([ROLLOUT.md](ROLLOUT.md), 1.7). To bring your team in, follow
+[Inviting staff](#inviting-staff). To reach it from other machines, put it behind Tailscale
+or a reverse proxy ([ROLLOUT.md](ROLLOUT.md), 1.4), set `PM_TRUST_PROXY=1` and, so invite
+links carry the right address, `PM_PUBLIC_URL`. The full setup, backups and upgrade guide is
+[ROLLOUT.md](ROLLOUT.md).
 
 The image is a multi-stage build on `node:24-bookworm-slim` (pinned by digest),
 runs as the unprivileged `node` user with a read-only root filesystem, and has a
@@ -76,6 +89,60 @@ docker compose run --rm officepm node apps/server/dist/seed-main.js
 
 Seeding creates the demo users, so the first-boot admin is then not created. Sign
 in as Maya, who is an admin.
+
+## Inviting staff
+
+There is no self-signup: every account exists because an admin made it. Admin has two ways to
+make one, and no email is ever sent. OfficePM sends no email at all, so you pass each link on
+yourself (chat, a message, in person).
+
+**Invite links (the usual way).** Admin > Invite staff: enter the person's email and name (and
+tick Invite as admin if they should be one). You get a link like
+`https://pm.example.com/#/invite/<token>`, shown once, with a Copy button. They open it, choose a
+password of their own (at least 8 characters) and are signed in. A link works once and for 7
+days; the server keeps only a hash of it, so a lost link cannot be shown again: revoke it
+(Admin > Invites) and make a new one. The list shows each invite as pending, used or expired.
+Links are built on the address you reach OfficePM at. Behind a proxy, set `PM_PUBLIC_URL`
+(for example `https://pm.example.com`) so they carry the public address, or `PM_TRUST_PROXY=1`
+so the proxy's `X-Forwarded-Proto` and `X-Forwarded-Host` are used.
+
+**Import many people from a CSV.** Admin > Import staff from CSV: paste or upload a file with the
+header `email,name,is_admin` (`is_admin` is optional: `true`, `false`, `yes`, `no`, `1` or `0`):
+
+```csv
+email,name,is_admin
+ada@example.com,Ada Obi,
+bayo@example.com,"Ade, Bayo",yes
+```
+
+Press Preview first. It checks every row without creating anything and shows a status per row:
+a bad email, a blank name, an email that appears twice in the file, and an email that already has
+an account or a pending invite are each reported and skipped. Up to 200 people and 128 KB per
+import. Confirm, and each valid row gets an invite; the results table shows every link once,
+with Copy all and Download CSV (`email,name,invite_link`). Any cell in a file OfficePM writes
+that starts with `=`, `+`, `-` or `@` gets a leading apostrophe, so a spreadsheet will not run
+it as a formula.
+
+**Creating a user with a password** (Admin > Create user) still works. The password is one you
+chose and passed on, so the person is made to choose their own when they first sign in. The
+same happens after an admin resets a password. Until they do, the server refuses everything
+else (`403 password_change_required`) and the page shows only the change-password screen.
+
+**Changing your own password.** The key button in the top bar. It needs your current password,
+the new one must be at least 8 characters (at most 72 bytes, which is all bcrypt reads), and it
+signs you out everywhere else. A wrong current password counts against the same throttle as a
+failed login. An admin reset keeps its 6 character minimum.
+
+**Deactivating people.** Admin > Users has a Status column and a Deactivate button (it asks
+first). A deactivated person cannot sign in (the same "invalid email or password" as a wrong
+password), their sessions and live streams end at once, and they no longer appear when
+choosing someone for new work. Their tickets, comments and history stay, and still show their
+name. Reactivate brings them back with the password they had. You cannot deactivate your own
+account, and the last active admin can never be deactivated. Invites a deactivated admin made
+stay pending.
+
+What is still not here: no email sending (not for invites, not for "forgot password", an admin
+resets that), and no SSO.
 
 ## What it does
 
@@ -329,6 +396,28 @@ signed-in user, like the assignee.
 `GET /api/users` rows gain `department`, comments may have `source: "handoff"`, and the
 event stream gains `handoff.created` (user ids and the ticket key, never emails, the note or the reason).
 
+#### Staff accounts (migration `0005-staff-accounts`)
+
+Adds `users.must_change_password` (default 0), `users.deactivated_at` and the `invites` table. `GET /api/me`,
+`GET /api/session` and the login answer gain `mustChangePassword`; `GET /api/users` rows gain
+`must_change_password` and `deactivated_at`. While `mustChangePassword` is true, every route that needs a
+session answers `403 {"error":"password_change_required"}` except `GET /api/me` and
+`POST /api/me/password` (`/api/login`, `/api/logout`, `/api/session`, `/api/config` and `/api/health` need no session).
+
+| Route | Who | What |
+|---|---|---|
+| `POST /api/invites` | admin | `{ email, name, is_admin? }`. 201 with `{ id, email, name, is_admin, expires_at, link }`; the link is the only copy of the token. 409 for an email with an account or a pending invite |
+| `GET /api/invites` | admin | Every invite with `status` (`pending`, `used`, `expired`), never a token |
+| `DELETE /api/invites/:id` | admin | Revokes (deletes) an invite that was not used; 409 for a used one |
+| `POST /api/invites/import` | admin | `{ csv, dry_run? }`, `dry_run` true unless explicitly `false`. 200 with `{ dry_run, total, valid, created, failed, rows, csv }`; 400 for a bad file or over 200 rows, 413 over 128 KB |
+| `GET /api/invites/:token` | public, throttled | `{ email, name }`, or a uniform 404 |
+| `POST /api/invites/:token/accept` | public, throttled | `{ password }` (8 to 72 bytes). Creates the account and signs in; 201 with the user, 409 if the email now has an account |
+| `POST /api/me/password` | signed in, throttled like login | `{ current_password, new_password }`. 403 for a wrong current password (never 401), 429 when throttled. Ends your other sessions and streams |
+| `POST /api/users/:id/deactivate`, `POST /api/users/:id/reactivate` | admin | `{ id, deactivated_at }`. 409 for yourself and for the last active admin |
+
+`GET /api/people` leaves out deactivated people. A handoff or a participant add that names one is a 400.
+Every route above that writes is refused in the public demo.
+
 ### Project layout
 
 | Path | What |
@@ -375,7 +464,8 @@ that file is on `main`. To try the demo mode on your own machine instead:
   on an ephemeral disk seeds fresh data. A restart in the same container keeps whatever is in
   the database until the next 03:00 reset.
 - **What is turned off,** each answered with a `403` and a message starting `demo_mode`: file
-  uploads, creating users, password and department changes, ticket links and project docs
+  uploads, creating users, invite links and the CSV import, password changes (an admin's reset
+  and your own), deactivating users and department changes, ticket links and project docs
   (they would put a stranger's URL in front of the next visitor), and the GitHub webhooks.
   Failed logins are throttled harder than usual, writes are capped per address (60 a minute) and
   overall (120 a minute), sign-ins have a tighter budget of their own (10 a minute per address),
@@ -410,6 +500,7 @@ All configuration is environment variables.
 | `ADMIN_EMAIL` | `admin@officepm.local` | First-boot admin, used only while the users table is empty |
 | `ADMIN_PASSWORD` | generated, printed once | Password for that admin |
 | `PM_TRUST_PROXY` | off | `1` or `true` behind a reverse proxy, so the login throttle uses the address in `X-Forwarded-For`. Leave off when reached directly: a client could forge it. |
+| `PM_PUBLIC_URL` | empty | The address invite links are built on, as an origin with no path (`https://pm.example.com`). Unset, links use the address of the admin's own request, and `X-Forwarded-Proto` and `X-Forwarded-Host` count only when `PM_TRUST_PROXY` is set. A value that is not an http or https origin stops the server. |
 | `DEMO_MODE` | off | `true`, `1` or `yes` (any case) runs the public demo (see [Public demo](#public-demo)): seeds the demo workspace when the database is empty, creates no first-boot admin, refuses uploads and account changes, throttles harder, and resets every night at 03:00 UTC. Needs `PM_DATA_DIR`, so it can never wipe a database in the repository root, and refuses a database that holds anything but demo data. Set to anything it does not recognise (other than `false`, `0`, `no`, `off` or empty), the server refuses to start instead of running as a normal instance. |
 | `GOATCOUNTER_CODE` | empty | A GoatCounter site code (letters, digits and hyphens). Set, the page gets the counting script and the Content-Security-Policy allows `gc.zgo.at` and `<code>.goatcounter.com`. Unset, nothing external is loaded. Anything else makes the server refuse to start. |
 | `NODE_ENV` | `development` | Only printed at startup |
@@ -471,8 +562,20 @@ tailnet. It is not hardened for the public internet; do not port-forward it.
 
 - Passwords are bcrypt (10 rounds). Sessions are random ids stored in SQLite and
   last 7 days, in an `HttpOnly`, `SameSite=Lax` cookie that is `Secure` when the
-  proxy reports `X-Forwarded-Proto: https`. There is no self-signup; an admin
-  creates every account. Resetting a password closes that user's event streams.
+  proxy reports `X-Forwarded-Proto: https`. There is no self-signup: an account exists
+  because an admin created it (with a password the person must change at first sign-in) or
+  invited it (see [Inviting staff](#inviting-staff)). Resetting a password, changing your own
+  and deactivating a user all end the sessions and event streams they should. OfficePM sends
+  no email and has no SSO.
+- Invite tokens are 32 random bytes, valid for 7 days and one use, and only their SHA-256
+  hash is stored, so a copy of the database holds no working link. The public validate and
+  accept routes answer every unknown, malformed, expired, used or revoked token with the
+  same 404, compare hashes in constant time, and count failed guesses per address with the
+  login throttle's machinery (a valid token is refunded). The accept request creates the
+  account, claims the invite and signs in in one transaction. The token travels in the URL
+  path, so a reverse proxy that logs request paths will log it: it is single-use, but
+  turn that logging off for `/api/invites/` if you can. A password chosen by a person has an
+  8 character minimum; an admin-set password keeps 6 and must be changed on first sign-in.
 - There is no separate CSRF token: writes rely on the `SameSite=Lax` cookie.
 - Failed logins are throttled in a 15 minute window, answered 429 before any password
   work: per full client address (30; an IPv6 address by all its groups, link-local with
@@ -512,8 +615,9 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 ## Upgrading from v1
 
 v2 reads v1's `pm.db`, `uploads/` and `projects.json` as they are. Its migrations only
-add: five tables, four nullable columns on v1's tables (`users.department`, and
-`tickets.subticket_of`, `tickets.phase`, `tickets.department`), and a fifth,
+add: six tables (`invites` is the newest), six columns on v1's tables (`users.department`,
+`users.must_change_password` with default 0, `users.deactivated_at`, and
+`tickets.subticket_of`, `tickets.phase`, `tickets.department`), and a seventh,
 `ticket_handoffs.kind`, on a table v2 itself creates. Frozen v1 ignores all of them (it
 echoes the ticket columns in its ticket JSON through `SELECT *` but does not use them), and no
 existing row changes. The data-compat suite checks that v1 still boots and runs on a migrated
